@@ -401,10 +401,29 @@ class Database {
     return template;
   }
 
-  public createTemplate(templateData: Omit<Template, 'id' | 'created_at' | 'updated_at'>): Template {
-    const id = `tpl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  public createTemplate(templateData: Omit<Template, 'id' | 'created_at' | 'updated_at'> & { id?: string }): Template {
+    // Prevent duplicate creation if a template with this ID or slug already exists
+    const existingIndex = this.data.templates.findIndex(t => 
+      (templateData.id && t.id === templateData.id) || 
+      (templateData.slug && t.slug === templateData.slug)
+    );
+
     const now = new Date().toISOString();
 
+    if (existingIndex !== -1) {
+      const existing = this.data.templates[existingIndex];
+      const updated: Template = {
+        ...existing,
+        ...templateData,
+        id: existing.id,
+        updated_at: now
+      };
+      this.data.templates[existingIndex] = updated;
+      this.save();
+      return updated;
+    }
+
+    const id = templateData.id || `tpl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newTemplate: Template = {
       ...templateData,
       id,
@@ -436,29 +455,30 @@ class Database {
   }
 
   public deleteTemplate(id: string): boolean {
-    const initialLen = this.data.templates.length;
-    this.data.templates = this.data.templates.filter(t => t.id !== id);
-    if (this.data.templates.length !== initialLen) {
-      // Record to deleted templates file so it never resurrects upon restart
-      try {
-        let deletedList: string[] = [];
-        if (fs.existsSync(DELETED_TEMPLATES_FILE)) {
-          const raw = fs.readFileSync(DELETED_TEMPLATES_FILE, 'utf-8');
-          deletedList = JSON.parse(raw);
-          if (!Array.isArray(deletedList)) deletedList = [];
-        }
-        if (!deletedList.includes(id)) {
-          deletedList.push(id);
-          fs.writeFileSync(DELETED_TEMPLATES_FILE, JSON.stringify(deletedList, null, 2), 'utf-8');
-        }
-      } catch (delErr) {
-        console.warn('Failed to record deleted template ID:', delErr);
-      }
+    const matched = this.data.templates.filter(t => t.id === id || t.slug === id);
+    this.data.templates = this.data.templates.filter(t => t.id !== id && t.slug !== id);
 
-      this.save();
-      return true;
+    // Record to deleted templates file so it never resurrects upon restart
+    try {
+      let deletedList: string[] = [];
+      if (fs.existsSync(DELETED_TEMPLATES_FILE)) {
+        const raw = fs.readFileSync(DELETED_TEMPLATES_FILE, 'utf-8');
+        deletedList = JSON.parse(raw);
+        if (!Array.isArray(deletedList)) deletedList = [];
+      }
+      const toRecord = [id, ...matched.map(t => t.id), ...matched.map(t => t.slug)];
+      toRecord.forEach(item => {
+        if (item && !deletedList.includes(item)) {
+          deletedList.push(item);
+        }
+      });
+      fs.writeFileSync(DELETED_TEMPLATES_FILE, JSON.stringify(deletedList, null, 2), 'utf-8');
+    } catch (delErr) {
+      console.warn('Failed to record deleted template ID:', delErr);
     }
-    return false;
+
+    this.save();
+    return true;
   }
 
   // --- ORDERS & CHECKOUT ---

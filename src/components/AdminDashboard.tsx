@@ -239,34 +239,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           firestoreTemplates.push({ id: d.id, ...d.data() } as Template);
         });
 
-        if (firestoreTemplates.length > 0) {
-          const tMap = new Map<string, Template>();
-          // Server templates
-          fetchedTemplates.forEach(t => tMap.set(t.id, t));
-          // Merge/overlay Firestore templates
-          firestoreTemplates.forEach(t => tMap.set(t.id, t));
-          combinedTemplates = Array.from(tMap.values());
+        // Strict deduplication map: deduplicate by ID and by Slug/Title
+        const templateMap = new Map<string, Template>();
+        const slugMap = new Map<string, string>(); // slug -> id
+        const duplicateFirestoreIdsToDelete: string[] = [];
 
-          // If there are templates in Firestore that were missing on the server (e.g. server container restarted),
-          // sync them back to the server in the background so backend endpoints have them too
-          firestoreTemplates.forEach(ft => {
-            if (!fetchedTemplates.some(st => st.id === ft.id)) {
-              api.adminCreateTemplate(token, ft).catch(() => {});
-            }
+        // 1. Process server templates
+        fetchedTemplates.forEach(t => {
+          if (!t || !t.id) return;
+          const normalizedSlug = (t.slug || t.title || '').trim().toLowerCase();
+          if (normalizedSlug && slugMap.has(normalizedSlug)) {
+            return;
+          }
+          templateMap.set(t.id, t);
+          if (normalizedSlug) slugMap.set(normalizedSlug, t.id);
+        });
+
+        // 2. Merge Firestore templates without creating duplicates
+        firestoreTemplates.forEach(ft => {
+          if (!ft || !ft.id) return;
+          const normalizedSlug = (ft.slug || ft.title || '').trim().toLowerCase();
+
+          if (templateMap.has(ft.id)) {
+            return;
+          }
+          if (normalizedSlug && slugMap.has(normalizedSlug)) {
+            // Already exists with another ID -> this is an orphaned duplicate from the old bug, mark for cleanup
+            duplicateFirestoreIdsToDelete.push(ft.id);
+            return;
+          }
+
+          templateMap.set(ft.id, ft);
+          if (normalizedSlug) slugMap.set(normalizedSlug, ft.id);
+        });
+
+        // 3. Clean up any redundant duplicate Firestore docs
+        if (duplicateFirestoreIdsToDelete.length > 0) {
+          duplicateFirestoreIdsToDelete.forEach(dupId => {
+            deleteDoc(doc(firestore, 'templates', dupId)).catch(() => {});
           });
         }
-        
-        // Also if server had templates not yet in Firestore, upload them to Firestore
-        fetchedTemplates.forEach(st => {
-          if (!firestoreTemplates.some(ft => ft.id === st.id)) {
-            try {
-              const cleanData = sanitizeForFirestore(st);
-              setDoc(doc(firestore, 'templates', st.id), cleanData, { merge: true }).catch(() => {});
-            } catch (fsErr) {
-              console.warn('Sync server template to firestore notice:', fsErr);
-            }
-          }
-        });
+
+        // 4. If server was completely empty (e.g. fresh container deploy on ephemeral host),
+        // sync existing unique templates to server preserving IDs
+        if (fetchedTemplates.length === 0 && firestoreTemplates.length > 0) {
+          Array.from(templateMap.values()).forEach(ft => {
+            api.adminCreateTemplate(token, ft).catch(() => {});
+          });
+        }
+
+        combinedTemplates = Array.from(templateMap.values());
       } catch (fsErr) {
         console.warn('Firestore admin templates sync notice:', fsErr);
       }
@@ -422,13 +444,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleDeleteTemplate = async (id: string) => {
     try {
       setDeletingTemplateId(id);
-      await api.adminDeleteTemplate(token, id);
+      const targetTemplate = templates.find(t => t.id === id);
+      const targetSlug = targetTemplate?.slug;
+      const targetTitle = targetTemplate?.title;
+
+      // 1. Delete from server backend
+      try {
+        await api.adminDeleteTemplate(token, id);
+      } catch (apiErr) {
+        console.warn('Server delete notice:', apiErr);
+      }
+
+      // 2. Delete from Firestore by document ID
       try {
         await deleteDoc(doc(firestore, 'templates', id));
       } catch (e) {
         console.warn('Firestore delete template notice:', e);
       }
+
+      // 3. Clean up ANY duplicate/orphan documents in Firestore that match this ID, slug, or title
+      try {
+        const snap = await getDocs(collection(firestore, 'templates'));
+        const deleteOps: Promise<any>[] = [];
+        snap.forEach(d => {
+          const data = d.data();
+          if (
+            d.id === id || 
+            (targetSlug && data.slug === targetSlug) || 
+            (targetTitle && data.title === targetTitle)
+          ) {
+            deleteOps.push(deleteDoc(doc(firestore, 'templates', d.id)).catch(() => {}));
+          }
+        });
+        if (deleteOps.length > 0) {
+          await Promise.all(deleteOps);
+        }
+      } catch (cleanErr) {
+        console.warn('Firestore template cleanup notice:', cleanErr);
+      }
+
+      // 4. Update local state immediately so user sees the change right away
+      setTemplates(prev => prev.filter(t => t.id !== id && (!targetSlug || t.slug !== targetSlug)));
       setConfirmDeleteTemplateId(null);
+
+      // 5. Refresh full data in background
       await loadData();
     } catch (err: any) {
       console.error('Failed to delete template:', err);

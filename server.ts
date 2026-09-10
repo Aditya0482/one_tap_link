@@ -949,7 +949,8 @@ async function startServer() {
         faq,
         status,
         sheet_preview,
-        images
+        images,
+        id
       } = req.body;
 
       if (!title || !description || price === undefined) {
@@ -961,6 +962,7 @@ async function startServer() {
         : title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
       const newTemplate = db.createTemplate({
+        id: id?.trim() || undefined,
         title: title.trim(),
         slug: formattedSlug || `tpl-${Date.now()}`,
         description: description.trim(),
@@ -1015,10 +1017,7 @@ async function startServer() {
   app.delete('/api/admin/templates/:id', adminAuthMiddleware, (req, res) => {
     try {
       const { id } = req.params;
-      const success = db.deleteTemplate(id);
-      if (!success) {
-        return res.status(404).json({ error: 'Template not found' });
-      }
+      db.deleteTemplate(id);
       res.json({ success: true, message: 'Template deleted' });
     } catch (error) {
       console.error('Delete template error:', error);

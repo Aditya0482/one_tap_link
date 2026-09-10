@@ -161,13 +161,29 @@ export const App: React.FC = () => {
       ]);
 
       // Source of truth: If cloud Firestore has templates, prioritize them to prevent restarted server from overriding
-      let finalTemplates: Template[] = [];
+      let rawTemplates: Template[] = [];
       if (firestoreTemplates && firestoreTemplates.length > 0) {
         const pub = firestoreTemplates.filter(t => t.status === 'Published');
-        finalTemplates = pub.length > 0 ? pub : firestoreTemplates;
+        rawTemplates = pub.length > 0 ? pub : firestoreTemplates;
       } else {
         const pub = serverTemplates.filter(t => t.status === 'Published');
-        finalTemplates = pub.length > 0 ? pub : serverTemplates;
+        rawTemplates = pub.length > 0 ? pub : serverTemplates;
+      }
+
+      // Deduplicate templates by ID and Slug
+      const seenIds = new Set<string>();
+      const seenSlugs = new Set<string>();
+      const finalTemplates: Template[] = [];
+
+      for (const t of rawTemplates) {
+        if (!t || !t.id) continue;
+        const slug = (t.slug || t.title || '').trim().toLowerCase();
+        if (seenIds.has(t.id) || (slug && seenSlugs.has(slug))) {
+          continue;
+        }
+        seenIds.add(t.id);
+        if (slug) seenSlugs.add(slug);
+        finalTemplates.push(t);
       }
 
       setTemplates(finalTemplates);
