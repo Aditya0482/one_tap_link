@@ -1,0 +1,221 @@
+{
+  "admins": [
+    {
+      "id": "adm_1",
+      "email": "admin@onetaplink.com",
+      "created_at": "2026-09-02T05:16:25.409Z"
+    },
+    {
+      "id": "EZxPgghTA6hpyvTfMKRPk9BTufR2",
+      "email": "admin@gmail.com",
+      "created_at": "2026-09-03T08:56:51.715Z"
+    }
+  ],
+  "admin_passwords": {
+    "adm_1": "$2b$10$Bt2HxSff.LZPQzp3LG4Zde0VMsOvfoX.dHAGxpGX0/EGeswl3.4R6"
+  },
+  "templates": [
+    {
+      "id": "tpl_master_budget",
+      "title": "Master Budget & Wealth Planner",
+      "slug": "master-budget-wealth-planner",
+      "description": "A comprehensive, automated Google Sheets system to track personal income, expenses, savings, investments, and net worth with interactive visual dashboards.",
+      "category": "Finance",
+      "price": 499,
+      "original_price": 1499,
+      "sale_price": 499,
+      "thumbnail_url": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80",
+      "demo_url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/preview",
+      "access_url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/copy",
+      "features": [
+        "Automated Net Worth & Cashflow visual dashboards",
+        "Smart category breakdown with 50/30/20 budget allocation",
+        "Multi-currency & custom monthly expense loggers",
+        "Debt snowball & savings goal milestone trackers",
+        "Zero formulas or complex math required — 100% plug & play"
+      ],
+      "included_items": [
+        "Master Google Sheets Template (instant copy to your Google Drive)",
+        "Quick Start Step-by-Step PDF & Video Guide",
+        "Lifetime access & all future template updates",
+        "Direct customer support via email"
+      ],
+      "faq": [
+        {
+          "question": "What do I receive after purchase?",
+          "answer": "Immediately after checkout, you get instant one-click access to copy the full Google Sheets template directly into your personal Google Drive account."
+        },
+        {
+          "question": "Can I edit and customize the template?",
+          "answer": "Yes! Once copied to your Google Drive, the spreadsheet is 100% yours. You can change colors, add custom categories, adjust rows, and modify formulas freely."
+        },
+        {
+          "question": "Do I need special software or subscriptions?",
+          "answer": "No paid software is required. You only need a standard, free Google account and a web browser or Google Sheets app on your phone, tablet, or computer."
+        },
+        {
+          "question": "How quickly will I receive access?",
+          "answer": "Instantly! The access link appears immediately on your order confirmation screen and is also sent directly to your provided email address."
+        },
+        {
+          "question": "What is your refund policy?",
+          "answer": "We offer a 14-day 100% satisfaction guarantee. If the template does not meet your expectations, simply reach out to support for a prompt refund."
+        }
+      ],
+      "status": "Published",
+      "created_at": "2026-09-02T05:16:25.409Z",
+      "updated_at": "2026-09-04T09:29:45.641Z",
+      "images": [
+        "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1543286386-713bdd548da4?w=1200&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=1200&auto=format&fit=crop&q=80"
+      ],
+      "sheet_preview": {
+        "sheetName": "Master Budget & Wealth Dashboard 2026",
+        "tabs": [
+          "📊 Dashboard",
+          "💵 Monthly Budget",
+          "💳 Expense Log",
+          "📈 Net Worth",
+          "🎯 Goals"
+        ],
+        "kpis": [
+          {
+            "label": "Total Monthly Income",
+            "value": "$8,450.00",
+            "change": "+12.4%",
+            "isPositive": true,
+            "color": "#22C55E"
+          },
+          {
+            "label": "Total Expenses",
+            "value": "$3,820.00",
+            "change": "-4.2%",
+            "isPositive": true,
+            "color": "#6D5DFB"
+          },
+          {
+            "label": "Net Monthly Savings",
+            "value": "$4,630.00",
+            "change": "+18.1%",
+            "isPositive": true,
+            "color": "#22C55E"
+          },
+          {
+            "label": "Savings Rate",
+            "value": "54.8%",
+            "change": "Optimal",
+            "isPositive": true,
+            "color": "#38BDF8"
+          }
+        ],
+        "headers": [
+          "Date",
+          "Category",
+          "Description",
+          "Planned",
+          "Actual",
+          "Variance",
+          "Status"
+        ],
+        "rows": [
+          { "cells": ["Sep 01", "Housing", "Monthly Rent / Mortgage", "$1,500", "$1,500", "$0", "Paid"] },
+          { "cells": ["Sep 03", "Consulting Income", "Client Retainer Q3", "$4,500", "$4,500", "$0", "Received"] },
+          { "cells": ["Sep 05", "Groceries", "Organic Produce & Market", "$450", "$410", "+$40", "Under Budget"] },
+          { "cells": ["Sep 08", "Software", "Cloud & Productivity Tools", "$120", "$120", "$0", "Paid"] },
+          { "cells": ["Sep 12", "Investments", "Index Funds & S&P 500", "$2,000", "$2,000", "$0", "Executed"] }
+        ],
+        "chartType": "donut",
+        "chartData": [
+          {
+            "label": "Housing",
+            "value": 39,
+            "color": "#6D5DFB"
+          },
+          {
+            "label": "Investments",
+            "value": 35,
+            "color": "#22C55E"
+          },
+          {
+            "label": "Living & Food",
+            "value": 16,
+            "color": "#38BDF8"
+          },
+          {
+            "label": "Savings",
+            "value": 10,
+            "color": "#F59E0B"
+          }
+        ]
+      }
+    }
+  ],
+  "orders": [
+    {
+      "id": "ord_1788598846780_603N",
+      "customer_name": "arun",
+      "customer_email": "admin@gmail.com",
+      "user_id": "Kuu3AxsQYdWT5oFhvAWd62wULE12",
+      "template_id": "tpl_master_budget",
+      "template_title": "Master Budget & Wealth Planner",
+      "template_thumbnail": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80",
+      "amount": 499,
+      "currency": "INR",
+      "payment_status": "Paid",
+      "access_status": "Granted",
+      "payment_reference": "pay_TYIZ0JofiAd5hQ",
+      "razorpay_order_id": "order_TYIYvqPWHu67fL",
+      "created_at": "2026-09-05T09:00:46.780Z",
+      "updated_at": "2026-09-05T09:01:06.143Z",
+      "razorpay_payment_id": "pay_TYIZ0JofiAd5hQ",
+      "access_url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/copy"
+    },
+    {
+      "id": "ord_1788598252452_C08V",
+      "customer_name": "Aditya",
+      "customer_email": "admin@gmail.com",
+      "user_id": "Kuu3AxsQYdWT5oFhvAWd62wULE12",
+      "template_id": "tpl_master_budget",
+      "template_title": "Master Budget & Wealth Planner",
+      "template_thumbnail": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80",
+      "amount": 499,
+      "currency": "INR",
+      "payment_status": "Paid",
+      "access_status": "Granted",
+      "payment_reference": "pay_TYIOZY0GHuFeOS",
+      "razorpay_order_id": "order_TYIOT4i4FkL9PL",
+      "created_at": "2026-09-05T08:50:52.452Z",
+      "updated_at": "2026-09-05T08:51:14.960Z",
+      "razorpay_payment_id": "pay_TYIOZY0GHuFeOS",
+      "access_url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/copy"
+    },
+    {
+      "id": "ord_1788593391336_3D7A",
+      "customer_name": "Aditya",
+      "customer_email": "admin@gmail.com",
+      "user_id": "Kuu3AxsQYdWT5oFhvAWd62wULE12",
+      "template_id": "tpl_master_budget",
+      "template_title": "Master Budget & Wealth Planner",
+      "template_thumbnail": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80",
+      "amount": 499,
+      "currency": "INR",
+      "payment_status": "Paid",
+      "access_status": "Granted",
+      "payment_reference": "pay_TYH10KTzxiky6E",
+      "razorpay_order_id": "order_TYH0sw47x6LhZA",
+      "created_at": "2026-09-05T07:29:51.336Z",
+      "updated_at": "2026-09-05T07:55:13.500Z",
+      "razorpay_payment_id": "pay_TYH10KTzxiky6E",
+      "access_url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/copy"
+    }
+  ],
+  "messages": [],
+  "settings": {
+    "google_sheet_orders_webhook_url": "https://script.google.com/macros/s/AKfycby1UkDFvBs7xEa3ugjCAPm4TsjYzWEroNb95ITCgO9yf6x-8ELT7Bibq5idr-XKxthV/exec",
+    "google_sheet_webhook_url": "https://script.google.com/macros/s/AKfycbzRFampIBOcn6DF9V52gRt9IBFxOqD1Xj7TU1cpTpQGbR70wkPQ0plHvD-7RWPe0mg1Cg/exec",
+    "google_sheet_inquiry_webhook_url": "https://script.google.com/macros/s/AKfycbzRFampIBOcn6DF9V52gRt9IBFxOqD1Xj7TU1cpTpQGbR70wkPQ0plHvD-7RWPe0mg1Cg/exec"
+  }
+}

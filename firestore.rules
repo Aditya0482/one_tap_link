@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Templates: Storefront templates readable and writable
+    match /templates/{templateId} {
+      allow read, write: if true;
+    }
+
+    // 2. User accounts
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 3. Customer Purchases: Created on verified checkout, read across devices by UID or email
+    match /purchases/{purchaseId} {
+      allow read, write: if true;
+    }
+
+    // 4. Orders: Stored on checkout
+    match /orders/{orderId} {
+      allow read, write: if true;
+    }
+
+    // 5. Contact Inquiries / Messages
+    match /messages/{messageId} {
+      allow create: if true;
+      allow read, write: if request.auth != null;
+    }
+
+    // 6. Settings
+    match /settings/{docId} {
+      allow read, write: if true;
+    }
+
+    // 7. General fallback
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
