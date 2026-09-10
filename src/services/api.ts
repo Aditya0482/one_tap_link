@@ -259,12 +259,26 @@ export const api = {
     return res.json();
   },
 
-  async adminDeleteTemplate(token: string, id: string): Promise<{ success: boolean }> {
-    const res = await fetch(`/api/admin/templates/${encodeURIComponent(id)}`, {
+  async adminDeleteTemplate(token: string, id: string, slug?: string, title?: string): Promise<{ success: boolean }> {
+    const params = new URLSearchParams();
+    if (slug) params.append('slug', slug);
+    if (title) params.append('title', title);
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+
+    const res = await fetch(`/api/admin/templates/${encodeURIComponent(id)}${queryString}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) throw new Error('Failed to delete template');
+    return res.json();
+  },
+
+  async adminCleanupTemplateDuplicates(token: string): Promise<{ success: boolean; count: number; templates: Template[] }> {
+    const res = await fetch('/api/admin/templates/cleanup-duplicates', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to cleanup duplicate templates');
     return res.json();
   },
 

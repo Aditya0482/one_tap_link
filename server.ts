@@ -1017,11 +1017,24 @@ async function startServer() {
   app.delete('/api/admin/templates/:id', adminAuthMiddleware, (req, res) => {
     try {
       const { id } = req.params;
-      db.deleteTemplate(id);
+      const slug = (req.query.slug as string) || undefined;
+      const title = (req.query.title as string) || undefined;
+      db.deleteTemplate(id, slug, title);
       res.json({ success: true, message: 'Template deleted' });
     } catch (error) {
       console.error('Delete template error:', error);
       res.status(500).json({ error: 'Failed to delete template' });
+    }
+  });
+
+  // Admin: Deduplicate & Clean Templates
+  app.post('/api/admin/templates/cleanup-duplicates', adminAuthMiddleware, (_req, res) => {
+    try {
+      const templates = db.cleanupDuplicates();
+      res.json({ success: true, count: templates.length, templates });
+    } catch (error) {
+      console.error('Cleanup templates error:', error);
+      res.status(500).json({ error: 'Failed to cleanup duplicate templates' });
     }
   });
 

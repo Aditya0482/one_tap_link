@@ -170,19 +170,22 @@ export const App: React.FC = () => {
         rawTemplates = pub.length > 0 ? pub : serverTemplates;
       }
 
-      // Deduplicate templates by ID and Slug
+      // Deduplicate templates by ID, Slug, and Title
       const seenIds = new Set<string>();
       const seenSlugs = new Set<string>();
+      const seenTitles = new Set<string>();
       const finalTemplates: Template[] = [];
 
       for (const t of rawTemplates) {
         if (!t || !t.id) continue;
-        const slug = (t.slug || t.title || '').trim().toLowerCase();
-        if (seenIds.has(t.id) || (slug && seenSlugs.has(slug))) {
+        const slug = (t.slug || '').trim().toLowerCase();
+        const title = (t.title || '').trim().toLowerCase();
+        if (seenIds.has(t.id) || (slug && seenSlugs.has(slug)) || (title && seenTitles.has(title))) {
           continue;
         }
         seenIds.add(t.id);
         if (slug) seenSlugs.add(slug);
+        if (title) seenTitles.add(title);
         finalTemplates.push(t);
       }
 

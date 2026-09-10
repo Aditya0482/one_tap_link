@@ -210,6 +210,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [confirmDeleteOrderId, setConfirmDeleteOrderId] = useState<string | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [orderActionFeedback, setOrderActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [templateFeedback, setTemplateFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
   const [confirmDeleteTemplateId, setConfirmDeleteTemplateId] = useState<string | null>(null);
   const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
   const [confirmClearData, setConfirmClearData] = useState(false);
@@ -230,8 +232,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }))
       ]);
 
-      // Load templates from Firestore as well to prevent any loss across server restarts/different devices
-      let combinedTemplates = [...fetchedTemplates];
+      // Strict deduplication map: deduplicate by ID, Slug, and Title
+      const templateMap = new Map<string, Template>();
+      const slugMap = new Map<string, string>(); // slug -> id
+      const titleMap = new Map<string, string>(); // title -> id
+      const duplicateFirestoreIdsToDelete: string[] = [];
+
+      // 1. Process server templates first
+      fetchedTemplates.forEach(t => {
+        if (!t || !t.id) return;
+        const normalizedSlug = (t.slug || '').trim().toLowerCase();
+        const normalizedTitle = (t.title || '').trim().toLowerCase();
+        if ((normalizedSlug && slugMap.has(normalizedSlug)) || (normalizedTitle && titleMap.has(normalizedTitle))) {
+          return;
+        }
+        templateMap.set(t.id, t);
+        if (normalizedSlug) slugMap.set(normalizedSlug, t.id);
+        if (normalizedTitle) titleMap.set(normalizedTitle, t.id);
+      });
+
+      // 2. Load templates from Firestore and merge
       try {
         const firestoreSnap = await getDocs(collection(firestore, 'templates'));
         const firestoreTemplates: Template[] = [];
@@ -239,60 +259,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           firestoreTemplates.push({ id: d.id, ...d.data() } as Template);
         });
 
-        // Strict deduplication map: deduplicate by ID and by Slug/Title
-        const templateMap = new Map<string, Template>();
-        const slugMap = new Map<string, string>(); // slug -> id
-        const duplicateFirestoreIdsToDelete: string[] = [];
-
-        // 1. Process server templates
-        fetchedTemplates.forEach(t => {
-          if (!t || !t.id) return;
-          const normalizedSlug = (t.slug || t.title || '').trim().toLowerCase();
-          if (normalizedSlug && slugMap.has(normalizedSlug)) {
-            return;
-          }
-          templateMap.set(t.id, t);
-          if (normalizedSlug) slugMap.set(normalizedSlug, t.id);
-        });
-
-        // 2. Merge Firestore templates without creating duplicates
         firestoreTemplates.forEach(ft => {
           if (!ft || !ft.id) return;
-          const normalizedSlug = (ft.slug || ft.title || '').trim().toLowerCase();
+          const normalizedSlug = (ft.slug || '').trim().toLowerCase();
+          const normalizedTitle = (ft.title || '').trim().toLowerCase();
 
           if (templateMap.has(ft.id)) {
             return;
           }
-          if (normalizedSlug && slugMap.has(normalizedSlug)) {
-            // Already exists with another ID -> this is an orphaned duplicate from the old bug, mark for cleanup
+          if ((normalizedSlug && slugMap.has(normalizedSlug)) || (normalizedTitle && titleMap.has(normalizedTitle))) {
+            // This is an orphaned cloud duplicate from the previous bug, mark for cleanup
             duplicateFirestoreIdsToDelete.push(ft.id);
             return;
           }
 
           templateMap.set(ft.id, ft);
           if (normalizedSlug) slugMap.set(normalizedSlug, ft.id);
+          if (normalizedTitle) titleMap.set(normalizedTitle, ft.id);
         });
 
         // 3. Clean up any redundant duplicate Firestore docs
         if (duplicateFirestoreIdsToDelete.length > 0) {
-          duplicateFirestoreIdsToDelete.forEach(dupId => {
-            deleteDoc(doc(firestore, 'templates', dupId)).catch(() => {});
-          });
+          await Promise.all(
+            duplicateFirestoreIdsToDelete.map(dupId => 
+              deleteDoc(doc(firestore, 'templates', dupId)).catch(() => {})
+            )
+          );
         }
 
-        // 4. If server was completely empty (e.g. fresh container deploy on ephemeral host),
-        // sync existing unique templates to server preserving IDs
+        // 4. Safe sync to server: ONLY if server was completely empty and Firestore has unique templates
         if (fetchedTemplates.length === 0 && firestoreTemplates.length > 0) {
-          Array.from(templateMap.values()).forEach(ft => {
-            api.adminCreateTemplate(token, ft).catch(() => {});
-          });
+          const uniqueList = Array.from(templateMap.values());
+          for (const ft of uniqueList) {
+            await api.adminCreateTemplate(token, ft).catch(() => {});
+          }
         }
-
-        combinedTemplates = Array.from(templateMap.values());
       } catch (fsErr) {
         console.warn('Firestore admin templates sync notice:', fsErr);
       }
 
+      const combinedTemplates = Array.from(templateMap.values());
       setStats(fetchedStats);
       setTemplates(combinedTemplates);
       setOrders(fetchedOrders);
@@ -441,37 +447,78 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     await loadData();
   };
 
+  const handleCleanupDuplicates = async () => {
+    setIsCleaningDuplicates(true);
+    setTemplateFeedback(null);
+    try {
+      // 1. Trigger server-side deduplication
+      await api.adminCleanupTemplateDuplicates(token).catch(() => {});
+
+      // 2. Wipe any duplicates in Firestore
+      try {
+        const snap = await getDocs(collection(firestore, 'templates'));
+        const seenSlugs = new Set<string>();
+        const seenTitles = new Set<string>();
+        const deleteOps: Promise<any>[] = [];
+
+        snap.forEach(d => {
+          const data = d.data();
+          const s = (data.slug || '').trim().toLowerCase();
+          const t = (data.title || '').trim().toLowerCase();
+          if ((s && seenSlugs.has(s)) || (t && seenTitles.has(t))) {
+            deleteOps.push(deleteDoc(doc(firestore, 'templates', d.id)).catch(() => {}));
+          } else {
+            if (s) seenSlugs.add(s);
+            if (t) seenTitles.add(t);
+          }
+        });
+        if (deleteOps.length > 0) {
+          await Promise.all(deleteOps);
+        }
+      } catch (fsErr) {
+        console.warn('Firestore cleanup error:', fsErr);
+      }
+
+      await loadData();
+      setTemplateFeedback({ type: 'success', message: 'All duplicate templates cleaned up successfully!' });
+      setTimeout(() => setTemplateFeedback(null), 4000);
+    } catch (err: any) {
+      setTemplateFeedback({ type: 'error', message: err?.message || 'Failed to clean duplicate templates' });
+    } finally {
+      setIsCleaningDuplicates(false);
+    }
+  };
+
   const handleDeleteTemplate = async (id: string) => {
     try {
       setDeletingTemplateId(id);
+      setTemplateFeedback(null);
       const targetTemplate = templates.find(t => t.id === id);
       const targetSlug = targetTemplate?.slug;
       const targetTitle = targetTemplate?.title;
 
-      // 1. Delete from server backend
+      const normSlug = (targetSlug || '').trim().toLowerCase();
+      const normTitle = (targetTitle || '').trim().toLowerCase();
+
+      // 1. Delete ALL matches from server backend (with slug & title query)
       try {
-        await api.adminDeleteTemplate(token, id);
+        await api.adminDeleteTemplate(token, id, targetSlug, targetTitle);
       } catch (apiErr) {
         console.warn('Server delete notice:', apiErr);
       }
 
-      // 2. Delete from Firestore by document ID
-      try {
-        await deleteDoc(doc(firestore, 'templates', id));
-      } catch (e) {
-        console.warn('Firestore delete template notice:', e);
-      }
-
-      // 3. Clean up ANY duplicate/orphan documents in Firestore that match this ID, slug, or title
+      // 2. Delete ALL matching docs from Firestore by document ID, slug, and title
       try {
         const snap = await getDocs(collection(firestore, 'templates'));
         const deleteOps: Promise<any>[] = [];
         snap.forEach(d => {
           const data = d.data();
+          const dSlug = (data.slug || '').trim().toLowerCase();
+          const dTitle = (data.title || '').trim().toLowerCase();
           if (
             d.id === id || 
-            (targetSlug && data.slug === targetSlug) || 
-            (targetTitle && data.title === targetTitle)
+            (normSlug && dSlug === normSlug) || 
+            (normTitle && dTitle === normTitle)
           ) {
             deleteOps.push(deleteDoc(doc(firestore, 'templates', d.id)).catch(() => {}));
           }
@@ -483,14 +530,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         console.warn('Firestore template cleanup notice:', cleanErr);
       }
 
-      // 4. Update local state immediately so user sees the change right away
-      setTemplates(prev => prev.filter(t => t.id !== id && (!targetSlug || t.slug !== targetSlug)));
+      // 3. Update local state immediately so user sees the change right away
+      setTemplates(prev => prev.filter(t => 
+        t.id !== id && 
+        (!normSlug || (t.slug || '').trim().toLowerCase() !== normSlug) &&
+        (!normTitle || (t.title || '').trim().toLowerCase() !== normTitle)
+      ));
       setConfirmDeleteTemplateId(null);
+      setTemplateFeedback({ 
+        type: 'success', 
+        message: `Template "${targetTitle || 'Item'}" deleted successfully!` 
+      });
+      setTimeout(() => setTemplateFeedback(null), 4000);
 
-      // 5. Refresh full data in background
+      // 4. Refresh full data in background
       await loadData();
     } catch (err: any) {
       console.error('Failed to delete template:', err);
+      setTemplateFeedback({ type: 'error', message: err?.message || 'Failed to delete template' });
     } finally {
       setDeletingTemplateId(null);
     }
@@ -886,7 +943,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   Create, edit pricing, update Google Drive access URLs, and publish new templates.
                 </p>
               </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCleanupDuplicates}
+                  disabled={isCleaningDuplicates}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-[#111827] text-xs font-semibold rounded-xl cursor-pointer transition-colors disabled:opacity-50"
+                  title="Purge and deduplicate any redundant templates"
+                >
+                  {isCleaningDuplicates ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Clean Duplicates
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingTemplate(null);
+                    setTemplateModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white text-xs font-semibold rounded-xl cursor-pointer shadow-xs transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add New Template
+                </button>
+              </div>
             </div>
+
+            {templateFeedback && (
+              <div className={`mx-6 mt-4 p-3 rounded-xl text-xs font-medium flex items-center justify-between gap-2 ${
+                templateFeedback.type === 'success' 
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                  : 'bg-rose-50 text-rose-800 border border-rose-200'
+              }`}>
+                <span>{templateFeedback.message}</span>
+                <button 
+                  type="button" 
+                  onClick={() => setTemplateFeedback(null)} 
+                  className="text-xs font-bold opacity-70 hover:opacity-100 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             {templates.length === 0 ? (
               <div className="py-12 px-4 text-center">

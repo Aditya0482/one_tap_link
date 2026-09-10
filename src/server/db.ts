@@ -167,17 +167,30 @@ class Database {
         const delRaw = fs.readFileSync(DELETED_TEMPLATES_FILE, 'utf-8');
         const delArr: string[] = JSON.parse(delRaw);
         if (Array.isArray(delArr)) {
-          delArr.forEach(id => deletedIds.add(id));
+          delArr.forEach(id => {
+            if (typeof id === 'string') {
+              deletedIds.add(id);
+              deletedIds.add(id.toLowerCase());
+            }
+          });
         }
       }
     } catch (delErr) {
       console.warn('Deleted templates read notice:', delErr);
     }
 
-    // Filter out any templates that were explicitly deleted
+    // Filter out any templates that were explicitly deleted by ID, slug, or title
     if (deletedIds.size > 0) {
-      baseData.templates = baseData.templates.filter(t => !deletedIds.has(t.id));
+      baseData.templates = baseData.templates.filter(t => {
+        const idMatch = deletedIds.has(t.id);
+        const slugMatch = t.slug && (deletedIds.has(t.slug) || deletedIds.has(t.slug.toLowerCase()));
+        const titleMatch = t.title && deletedIds.has(t.title.trim().toLowerCase());
+        return !idMatch && !slugMatch && !titleMatch;
+      });
     }
+
+    // Deduplicate baseData templates by ID, slug, and title
+    baseData.templates = this.deduplicateTemplates(baseData.templates);
 
     // Permanent Templates Sync: Merge any templates from templates_permanent.json if not deleted
     try {
@@ -186,12 +199,22 @@ class Database {
         const permTemplates: Template[] = JSON.parse(permRaw);
         if (Array.isArray(permTemplates)) {
           for (const pt of permTemplates) {
-            if (deletedIds.has(pt.id)) continue;
+            if (!pt || !pt.id) continue;
+            const ptSlug = (pt.slug || '').trim().toLowerCase();
+            const ptTitle = (pt.title || '').trim().toLowerCase();
+
+            if (deletedIds.has(pt.id) || (ptSlug && deletedIds.has(ptSlug)) || (ptTitle && deletedIds.has(ptTitle))) {
+              continue;
+            }
             // Prevent resurrected default initial template if user already has other templates
             if (pt.id === INITIAL_TEMPLATE.id && baseData.templates.length > 0 && !baseData.templates.some(t => t.id === INITIAL_TEMPLATE.id)) {
               continue;
             }
-            const exists = baseData.templates.some(t => t.id === pt.id || t.slug === pt.slug);
+            const exists = baseData.templates.some(t => 
+              t.id === pt.id || 
+              (ptSlug && (t.slug || '').trim().toLowerCase() === ptSlug) ||
+              (ptTitle && (t.title || '').trim().toLowerCase() === ptTitle)
+            );
             if (!exists) {
               baseData.templates.push(pt);
             }
@@ -202,13 +225,15 @@ class Database {
       console.warn('Permanent templates read notice:', permErr);
     }
 
+    baseData.templates = this.deduplicateTemplates(baseData.templates);
+
     // Support TEMPLATES_JSON environment variable (e.g. for Render, Railway hosting)
     // Ensures templates are permanent and never reset even across ephemeral container restarts
     if (process.env.TEMPLATES_JSON) {
       try {
         const envTemplates = JSON.parse(process.env.TEMPLATES_JSON);
         if (Array.isArray(envTemplates) && envTemplates.length > 0) {
-          baseData.templates = envTemplates;
+          baseData.templates = this.deduplicateTemplates(envTemplates);
         }
       } catch (envErr) {
         console.warn('Failed to parse TEMPLATES_JSON environment variable:', envErr);
@@ -355,7 +380,39 @@ class Database {
   }
 
   // --- TEMPLATES ---
+  public deduplicateTemplates(templates: Template[]): Template[] {
+    if (!Array.isArray(templates)) return [];
+    const seenIds = new Set<string>();
+    const seenSlugs = new Set<string>();
+    const seenTitles = new Set<string>();
+    const clean: Template[] = [];
+
+    for (const t of templates) {
+      if (!t || !t.id) continue;
+      const idKey = t.id.trim();
+      const slugKey = (t.slug || '').trim().toLowerCase();
+      const titleKey = (t.title || '').trim().toLowerCase();
+
+      if (seenIds.has(idKey)) continue;
+      if (slugKey && seenSlugs.has(slugKey)) continue;
+      if (titleKey && seenTitles.has(titleKey)) continue;
+
+      seenIds.add(idKey);
+      if (slugKey) seenSlugs.add(slugKey);
+      if (titleKey) seenTitles.add(titleKey);
+      clean.push(t);
+    }
+    return clean;
+  }
+
+  public cleanupDuplicates(): Template[] {
+    this.data.templates = this.deduplicateTemplates(this.data.templates);
+    this.save();
+    return this.data.templates;
+  }
+
   public getPublishedTemplates(): Template[] {
+    this.data.templates = this.deduplicateTemplates(this.data.templates);
     // Strip private access_url for public safety
     return this.data.templates
       .filter(t => t.status === 'Published')
@@ -366,11 +423,13 @@ class Database {
   }
 
   public getAllTemplatesAdmin(): Template[] {
+    this.data.templates = this.deduplicateTemplates(this.data.templates);
     return this.data.templates;
   }
 
   public getTemplateBySlug(slug: string, isAdmin = false): Template | null {
-    const template = this.data.templates.find(t => t.slug === slug);
+    const cleanSlug = (slug || '').trim().toLowerCase();
+    const template = this.data.templates.find(t => (t.slug || '').trim().toLowerCase() === cleanSlug || t.id === slug);
     if (!template) return null;
 
     if (!isAdmin && template.status !== 'Published') {
@@ -402,10 +461,15 @@ class Database {
   }
 
   public createTemplate(templateData: Omit<Template, 'id' | 'created_at' | 'updated_at'> & { id?: string }): Template {
-    // Prevent duplicate creation if a template with this ID or slug already exists
+    const cleanSlug = (templateData.slug || '').trim().toLowerCase();
+    const cleanTitle = (templateData.title || '').trim().toLowerCase();
+    const cleanId = (templateData.id || '').trim();
+
+    // Prevent duplicate creation if a template with this ID, slug, or title already exists
     const existingIndex = this.data.templates.findIndex(t => 
-      (templateData.id && t.id === templateData.id) || 
-      (templateData.slug && t.slug === templateData.slug)
+      (cleanId && t.id === cleanId) || 
+      (cleanSlug && (t.slug || '').trim().toLowerCase() === cleanSlug) ||
+      (cleanTitle && (t.title || '').trim().toLowerCase() === cleanTitle)
     );
 
     const now = new Date().toISOString();
@@ -419,11 +483,12 @@ class Database {
         updated_at: now
       };
       this.data.templates[existingIndex] = updated;
+      this.data.templates = this.deduplicateTemplates(this.data.templates);
       this.save();
       return updated;
     }
 
-    const id = templateData.id || `tpl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const id = cleanId || `tpl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newTemplate: Template = {
       ...templateData,
       id,
@@ -432,6 +497,7 @@ class Database {
     };
 
     this.data.templates.unshift(newTemplate);
+    this.data.templates = this.deduplicateTemplates(this.data.templates);
     this.save();
     return newTemplate;
   }
@@ -450,15 +516,31 @@ class Database {
     };
 
     this.data.templates[index] = updated;
+    this.data.templates = this.deduplicateTemplates(this.data.templates);
     this.save();
     return updated;
   }
 
-  public deleteTemplate(id: string): boolean {
-    const matched = this.data.templates.filter(t => t.id === id || t.slug === id);
-    this.data.templates = this.data.templates.filter(t => t.id !== id && t.slug !== id);
+  public deleteTemplate(id: string, slug?: string, title?: string): boolean {
+    const cleanId = (id || '').trim();
+    const cleanSlug = (slug || '').trim().toLowerCase();
+    const cleanTitle = (title || '').trim().toLowerCase();
 
-    // Record to deleted templates file so it never resurrects upon restart
+    // Find ALL matching templates in memory (including duplicate instances)
+    const matched = this.data.templates.filter(t => 
+      (cleanId && (t.id === cleanId || t.slug === cleanId)) ||
+      (cleanSlug && (t.slug || '').trim().toLowerCase() === cleanSlug) ||
+      (cleanTitle && (t.title || '').trim().toLowerCase() === cleanTitle)
+    );
+
+    // Filter out ALL instances matching this ID, slug, or title
+    this.data.templates = this.data.templates.filter(t => 
+      (!cleanId || (t.id !== cleanId && t.slug !== cleanId)) &&
+      (!cleanSlug || (t.slug || '').trim().toLowerCase() !== cleanSlug) &&
+      (!cleanTitle || (t.title || '').trim().toLowerCase() !== cleanTitle)
+    );
+
+    // Record all IDs, slugs, and titles to deleted templates file so they NEVER resurrect upon restart
     try {
       let deletedList: string[] = [];
       if (fs.existsSync(DELETED_TEMPLATES_FILE)) {
@@ -466,7 +548,15 @@ class Database {
         deletedList = JSON.parse(raw);
         if (!Array.isArray(deletedList)) deletedList = [];
       }
-      const toRecord = [id, ...matched.map(t => t.id), ...matched.map(t => t.slug)];
+      const toRecord = [
+        cleanId, 
+        cleanSlug, 
+        cleanTitle,
+        ...matched.map(t => t.id), 
+        ...matched.map(t => t.slug),
+        ...matched.map(t => (t.title || '').trim().toLowerCase())
+      ].filter(Boolean);
+
       toRecord.forEach(item => {
         if (item && !deletedList.includes(item)) {
           deletedList.push(item);
