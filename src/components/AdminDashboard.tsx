@@ -278,21 +278,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           if (normalizedTitle) titleMap.set(normalizedTitle, ft.id);
         });
 
-        // 3. Clean up any redundant duplicate Firestore docs
+        // 3. Clean up any redundant duplicate Firestore docs silently in background
         if (duplicateFirestoreIdsToDelete.length > 0) {
           await Promise.all(
             duplicateFirestoreIdsToDelete.map(dupId => 
               deleteDoc(doc(firestore, 'templates', dupId)).catch(() => {})
             )
           );
-        }
-
-        // 4. Safe sync to server: ONLY if server was completely empty and Firestore has unique templates
-        if (fetchedTemplates.length === 0 && firestoreTemplates.length > 0) {
-          const uniqueList = Array.from(templateMap.values());
-          for (const ft of uniqueList) {
-            await api.adminCreateTemplate(token, ft).catch(() => {});
-          }
         }
       } catch (fsErr) {
         console.warn('Firestore admin templates sync notice:', fsErr);

@@ -1,139 +1,68 @@
 [
   {
-    "id": "tpl_master_budget",
-    "title": "Master Budget & Wealth Planner",
-    "slug": "master-budget-wealth-planner",
-    "description": "A comprehensive, automated Google Sheets system to track personal income, expenses, savings, investments, and net worth with interactive visual dashboards.",
-    "category": "Finance",
-    "price": 499,
-    "original_price": 1499,
-    "sale_price": 499,
-    "thumbnail_url": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80",
-    "demo_url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/preview",
-    "access_url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/copy",
+    "id": "tpl_1789041719279_ts0i2",
+    "title": "ONLINE SELLER BUSINESS MANAGER",
+    "slug": "online-seller-business-manager-template",
+    "description": "Online Seller Business Manager is an all-in-one Google Sheets template designed to simplify and organize your online selling business. Manage your orders, products, inventory, sales, expenses, customers, revenue, and profits from one centralized workspace. Whether you sell through marketplaces, social media, or your own online store, this ready-to-use template helps you keep your business data organized, save time, and get a clear view of your overall business performance.",
+    "category": "Business",
+    "price": 299,
+    "original_price": 499,
+    "thumbnail_url": "/uploads/Screenshot_2026-09-06_202944_p-1789041453774-v9vg8.jpg",
+    "access_url": "https://docs.google.com/spreadsheets/d/1vanviVna8NXDDp3wcPhBe8AoaRD833Cl5Ws8aqbHUig/copy",
     "features": [
-      "Automated Net Worth & Cashflow visual dashboards",
-      "Smart category breakdown with 50/30/20 budget allocation",
-      "Multi-currency & custom monthly expense loggers",
-      "Debt snowball & savings goal milestone trackers",
-      "Zero formulas or complex math required — 100% plug & play"
+      "📦 Order Management",
+      "🛍️ Product Management",
+      "📋 Inventory Tracking",
+      "📈 Sales Tracking",
+      "💰 Expense Tracking",
+      "👥 Customer Management",
+      "💵 Profit Tracking",
+      "📊 Business Dashboard",
+      "📄 Easy Customization",
+      "🔥 Simple & User-Friendly"
     ],
     "included_items": [
-      "Master Google Sheets Template (instant copy to your Google Drive)",
-      "Quick Start Step-by-Step PDF & Video Guide",
-      "Lifetime access & all future template updates",
-      "Direct customer support via email"
+      "📊 Business Dashboard",
+      "📦 Order Tracker",
+      "🛍️ Product Manager",
+      "📋 Inventory Tracker",
+      "💰 Expense Tracker",
+      "👥 Customer Database",
+      "📈 Sales Tracker",
+      "💵 Profit Calculator",
+      "⚙️ Setup Guide"
     ],
     "faq": [
       {
-        "question": "What do I receive after purchase?",
-        "answer": "Immediately after checkout, you get instant one-click access to copy the full Google Sheets template directly into your personal Google Drive account."
+        "answer": "It is an all-in-one Google Sheets template designed to help you manage your online selling business from one centralized workspace.",
+        "question": "What is the Online Seller Business Manager?"
       },
       {
-        "question": "Can I edit and customize the template?",
-        "answer": "Yes! Once copied to your Google Drive, the spreadsheet is 100% yours. You can change colors, add custom categories, adjust rows, and modify formulas freely."
+        "answer": "You can manage orders, products, inventory, sales, expenses, customers, revenue, and profits.",
+        "question": "What can I manage with this template?"
       },
       {
-        "question": "Do I need special software or subscriptions?",
-        "answer": "No paid software is required. You only need a standard, free Google account and a web browser or Google Sheets app on your phone, tablet, or computer."
+        "answer": "No. You only need Google Sheets and a Google account to use the template.",
+        "question": "Do I need any special software?"
       },
       {
-        "question": "How quickly will I receive access?",
-        "answer": "Instantly! The access link appears immediately on your order confirmation screen and is also sent directly to your provided email address."
+        "answer": "Yes. The template is designed to be simple, user-friendly, and easy to customize, even if you have limited spreadsheet experience.",
+        "question": "Is this suitable for beginners?"
       },
       {
-        "question": "What is your refund policy?",
-        "answer": "Due to the instant delivery nature of digital Google Sheets, access is immediate upon checkout. If you encounter any technical issue or broken formula that our support team cannot resolve within 24 hours, or in case of duplicate billing, you are eligible for a 100% full refund."
+        "answer": "Yes. You can easily customize the sheets according to your business needs.",
+        "question": "Can I customize the template?"
       }
     ],
     "status": "Published",
-    "created_at": "2026-09-08T06:21:52.173Z",
-    "updated_at": "2026-09-08T06:21:52.173Z",
+    "created_at": "2026-09-10T12:01:59.279Z",
+    "updated_at": "2026-09-10T12:01:59.279Z",
     "images": [
-      "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80",
-      "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200&auto=format&fit=crop&q=80",
-      "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&auto=format&fit=crop&q=80",
-      "https://images.unsplash.com/photo-1543286386-713bdd548da4?w=1200&auto=format&fit=crop&q=80",
-      "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=1200&auto=format&fit=crop&q=80"
-    ],
-    "sheet_preview": {
-      "sheetName": "Master Budget & Wealth Dashboard 2026",
-      "tabs": [
-        "📊 Dashboard",
-        "💵 Monthly Budget",
-        "💳 Expense Log",
-        "📈 Net Worth",
-        "🎯 Goals"
-      ],
-      "kpis": [
-        {
-          "label": "Total Monthly Income",
-          "value": "₹84,500.00",
-          "change": "+12.4%",
-          "isPositive": true,
-          "color": "#22C55E"
-        },
-        {
-          "label": "Total Expenses",
-          "value": "₹38,200.00",
-          "change": "-4.2%",
-          "isPositive": true,
-          "color": "#6D5DFB"
-        },
-        {
-          "label": "Net Monthly Savings",
-          "value": "₹46,300.00",
-          "change": "+18.1%",
-          "isPositive": true,
-          "color": "#22C55E"
-        },
-        {
-          "label": "Savings Rate",
-          "value": "54.8%",
-          "change": "Optimal",
-          "isPositive": true,
-          "color": "#38BDF8"
-        }
-      ],
-      "headers": [
-        "Date",
-        "Category",
-        "Description",
-        "Planned",
-        "Actual",
-        "Variance",
-        "Status"
-      ],
-      "rows": [
-        { "cells": ["Sep 01", "Housing", "Monthly Rent / Mortgage", "₹15,000", "₹15,000", "₹0", "Paid"] },
-        { "cells": ["Sep 03", "Consulting Income", "Client Retainer Q3", "₹45,000", "₹45,000", "₹0", "Received"] },
-        { "cells": ["Sep 05", "Groceries", "Organic Produce & Market", "₹4,500", "₹4,100", "+₹400", "Under Budget"] },
-        { "cells": ["Sep 08", "Software", "Cloud & Productivity Tools", "₹1,200", "₹1,200", "₹0", "Paid"] },
-        { "cells": ["Sep 12", "Investments", "Index Funds & Equities", "₹20,000", "₹20,000", "₹0", "Executed"] }
-      ],
-      "chartType": "donut",
-      "chartData": [
-        {
-          "label": "Housing",
-          "value": 39,
-          "color": "#6D5DFB"
-        },
-        {
-          "label": "Investments",
-          "value": 35,
-          "color": "#22C55E"
-        },
-        {
-          "label": "Living & Food",
-          "value": 16,
-          "color": "#38BDF8"
-        },
-        {
-          "label": "Savings",
-          "value": 10,
-          "color": "#F59E0B"
-        }
-      ]
-    }
+      "/uploads/Screenshot_2026-09-06_202944_p-1789041453774-v9vg8.jpg",
+      "/uploads/Screenshot_2026-09-06_203002_p-1789041457863-zzevq.jpg",
+      "/uploads/Screenshot_2026-09-06_203016_p-1789041461888-0627h.jpg",
+      "/uploads/Screenshot_2026-09-06_203030_p-1789041465839-5t9iu.jpg",
+      "/uploads/Screenshot_2026-09-06_202921_p-1789041469896-lt1h2.jpg"
+    ]
   }
 ]
