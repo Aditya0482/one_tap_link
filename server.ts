@@ -867,6 +867,10 @@ async function startServer() {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
   app.use('/uploads', express.static(uploadsDir));
+  // If static middleware didn't find the file on ephemeral disk (e.g. wiped after container restart), redirect to fallback preview
+  app.get('/uploads/:filename', (_req, res) => {
+    res.redirect('https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80');
+  });
 
   // Admin: Upload Image (Base64 or URL)
   app.post('/api/admin/upload-image', adminAuthMiddleware, (req, res) => {
@@ -900,10 +904,15 @@ async function startServer() {
       const filename = `${safeName}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${ext}`;
       const filePath = path.join(uploadsDir, filename);
 
-      fs.writeFileSync(filePath, buffer);
+      try {
+        fs.writeFileSync(filePath, buffer);
+      } catch (writeErr) {
+        console.warn('Local disk write notice (ephemeral storage):', writeErr);
+      }
 
-      const publicUrl = `/uploads/${filename}`;
-      res.json({ url: publicUrl, success: true });
+      // Return the base64 URI directly so client stores permanent data in Firestore.
+      // This prevents the image from disappearing when Railway/Render container restarts.
+      res.json({ url: image, filename, success: true });
     } catch (error: any) {
       console.error('Image upload error:', error);
       res.status(500).json({ error: 'Failed to upload image: ' + (error?.message || '') });

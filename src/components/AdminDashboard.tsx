@@ -862,9 +862,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div key={t.id} className="p-4 space-y-3">
                       <div className="flex items-start gap-3">
                         <img
-                          src={t.thumbnail_url}
+                          src={t.thumbnail_url || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&auto=format&fit=crop&q=80'}
                           alt={t.title}
                           className="w-16 h-12 object-cover rounded-lg border border-[#E2E8F0] shrink-0"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&auto=format&fit=crop&q=80';
+                          }}
                         />
                         <div className="min-w-0 flex-1">
                           <div className="font-bold text-xs text-[#111827] truncate">{t.title}</div>
@@ -969,9 +972,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <tr key={t.id} className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC]">
                           <td className="py-3 px-4">
                             <img
-                              src={t.thumbnail_url}
+                              src={t.thumbnail_url || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&auto=format&fit=crop&q=80'}
                               alt={t.title}
                               className="w-12 h-9 object-cover rounded-lg border border-[#E2E8F0]"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&auto=format&fit=crop&q=80';
+                              }}
                             />
                           </td>
                           <td className="py-3 px-4">

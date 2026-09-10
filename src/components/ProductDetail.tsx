@@ -159,9 +159,12 @@ export const ProductDetail: React.FC<ProductDetailProps> = ({
             {/* Main Stage Image Preview */}
             <div className="relative rounded-2xl overflow-hidden border border-[#E2E8F0] bg-white aspect-[16/10] shadow-sm group">
               <img
-                src={displayImages[selectedImageIndex] || template.thumbnail_url}
+                src={displayImages[selectedImageIndex] || template.thumbnail_url || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80'}
                 alt={`${template.title} - Preview ${selectedImageIndex + 1}`}
                 className="w-full h-full object-cover transition-all duration-300"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80';
+                }}
               />
 
               {/* Fullscreen Button */}
@@ -215,9 +218,12 @@ export const ProductDetail: React.FC<ProductDetailProps> = ({
                     }`}
                   >
                     <img
-                      src={img}
+                      src={img || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&auto=format&fit=crop&q=80'}
                       alt={`Thumbnail ${idx + 1}`}
                       className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-200"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&auto=format&fit=crop&q=80';
+                      }}
                     />
                     <span
                       className={`absolute top-1 left-1 w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center ${
@@ -477,9 +483,12 @@ export const ProductDetail: React.FC<ProductDetailProps> = ({
             {/* Uncropped Full Image View */}
             <div className="relative w-full rounded-2xl overflow-hidden bg-black/50 border border-white/15 flex items-center justify-center shadow-2xl p-1 sm:p-2">
               <img
-                src={displayImages[selectedImageIndex]}
+                src={displayImages[selectedImageIndex] || template.thumbnail_url || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1600&auto=format&fit=crop&q=80'}
                 alt={`${template.title} - Full Preview ${selectedImageIndex + 1}`}
                 className="max-h-[78vh] w-auto max-w-full object-contain select-none rounded-xl"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1600&auto=format&fit=crop&q=80';
+                }}
               />
 
               {/* Prev / Next Arrows in Lightbox */}

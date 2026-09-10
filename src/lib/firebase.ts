@@ -10,6 +10,7 @@ import {
   User
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const effectiveFirebaseConfig = {
@@ -27,6 +28,21 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 export const firestore = getFirestore(app);
+export const storage = getStorage(app);
+
+/**
+ * Uploads an image file or blob directly to Firebase Cloud Storage.
+ * Returns a permanent CDN download URL.
+ */
+export async function uploadImageToFirebaseStorage(fileOrBlob: Blob | File, filename?: string): Promise<string> {
+  const safeName = (filename || `img_${Date.now()}`).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const fullPath = `templates/${Date.now()}_${safeName}`;
+  const storageRef = ref(storage, fullPath);
+  const snapshot = await uploadBytes(storageRef, fileOrBlob, {
+    contentType: fileOrBlob.type || 'image/jpeg',
+  });
+  return await getDownloadURL(snapshot.ref);
+}
 
 /**
  * Recursively sanitizes data before sending to Firebase Firestore:

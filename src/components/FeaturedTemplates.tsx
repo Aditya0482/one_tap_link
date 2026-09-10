@@ -90,10 +90,13 @@ export const FeaturedTemplates: React.FC<FeaturedTemplatesProps> = ({
                     onClick={() => onSelectTemplate(template)}
                   >
                     <img
-                      src={template.thumbnail_url}
+                      src={template.thumbnail_url || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80'}
                       alt={template.title}
                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                       loading="lazy"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80';
+                      }}
                     />
 
                     {/* Instant Access Badge (Green) */}

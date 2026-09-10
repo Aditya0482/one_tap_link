@@ -355,9 +355,12 @@ export const Checkout: React.FC<CheckoutProps> = ({
             {/* Template Item */}
             <div className="flex items-center gap-3 pb-4 border-b border-[#F1F5F9]">
               <img
-                src={template.thumbnail_url}
+                src={template.thumbnail_url || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&auto=format&fit=crop&q=80'}
                 alt={template.title}
                 className="w-16 h-12 object-cover rounded-lg border border-[#E2E8F0] shrink-0"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&auto=format&fit=crop&q=80';
+                }}
               />
               <div className="min-w-0 flex-1">
                 <h4 className="text-xs font-bold text-[#111827] truncate">

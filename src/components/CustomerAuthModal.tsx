@@ -197,9 +197,12 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             <div className="p-3.5 rounded-xl bg-[#6D5DFB]/10 border border-[#6D5DFB]/25 flex items-center gap-3">
               <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-slate-100 border border-slate-200">
                 <img 
-                  src={pendingTemplate.thumbnail_url} 
+                  src={pendingTemplate.thumbnail_url || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&auto=format&fit=crop&q=80'} 
                   alt={pendingTemplate.title} 
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&auto=format&fit=crop&q=80';
+                  }}
                 />
               </div>
               <div className="min-w-0 flex-1">
