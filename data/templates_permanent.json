@@ -1,13 +1,13 @@
 [
   {
-    "id": "tpl_1789041719279_ts0i2",
+    "id": "tpl_1789079479922_amtt2",
     "title": "ONLINE SELLER BUSINESS MANAGER",
     "slug": "online-seller-business-manager-template",
     "description": "Online Seller Business Manager is an all-in-one Google Sheets template designed to simplify and organize your online selling business. Manage your orders, products, inventory, sales, expenses, customers, revenue, and profits from one centralized workspace. Whether you sell through marketplaces, social media, or your own online store, this ready-to-use template helps you keep your business data organized, save time, and get a clear view of your overall business performance.",
     "category": "Business",
     "price": 299,
     "original_price": 499,
-    "thumbnail_url": "/uploads/Screenshot_2026-09-06_202944_p-1789041453774-v9vg8.jpg",
+    "thumbnail_url": "/uploads/Screenshot_2026-09-11_035915_p-1789079527733-32elj.jpg",
     "access_url": "https://docs.google.com/spreadsheets/d/1vanviVna8NXDDp3wcPhBe8AoaRD833Cl5Ws8aqbHUig/copy",
     "features": [
       "📦 Order Management",
@@ -55,14 +55,14 @@
       }
     ],
     "status": "Published",
-    "created_at": "2026-09-10T12:01:59.279Z",
-    "updated_at": "2026-09-10T12:01:59.279Z",
+    "created_at": "2026-09-10T22:31:19.922Z",
+    "updated_at": "2026-09-10T22:32:35.980Z",
     "images": [
-      "/uploads/Screenshot_2026-09-06_202944_p-1789041453774-v9vg8.jpg",
-      "/uploads/Screenshot_2026-09-06_203002_p-1789041457863-zzevq.jpg",
-      "/uploads/Screenshot_2026-09-06_203016_p-1789041461888-0627h.jpg",
-      "/uploads/Screenshot_2026-09-06_203030_p-1789041465839-5t9iu.jpg",
-      "/uploads/Screenshot_2026-09-06_202921_p-1789041469896-lt1h2.jpg"
+      "/uploads/Screenshot_2026-09-11_035915_p-1789079527733-32elj.jpg",
+      "/uploads/Screenshot_2026-09-11_040013_p-1789079539301-ygvat.jpg",
+      "/uploads/Screenshot_2026-09-11_040028_p-1789079545703-3dbix.jpg",
+      "/uploads/Screenshot_2026-09-11_040043_p-1789079550288-txlo7.jpg",
+      "/uploads/Screenshot_2026-09-11_035946_p-1789079554873-ndiky.jpg"
     ]
   }
 ]

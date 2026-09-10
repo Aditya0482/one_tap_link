@@ -191,20 +191,6 @@ export const App: React.FC = () => {
 
       setTemplates(finalTemplates);
 
-      // Only seed initial templates to Firestore if Firestore is completely empty and server has seed templates
-      if (firestoreTemplates.length === 0 && serverTemplates.length > 0) {
-        serverTemplates.forEach(st => {
-          try {
-            const cleanData = sanitizeForFirestore(st);
-            setDoc(doc(firestore, 'templates', st.id), cleanData, { merge: true }).catch((e) => {
-              console.warn('Initial seed to Firestore notice:', e);
-            });
-          } catch (syncErr) {
-            console.warn('Initial seed caught error:', syncErr);
-          }
-        });
-      }
-
       const hash = window.location.hash.replace('#', '').toLowerCase();
       if (hash.startsWith('checkout/')) {
         const slug = hash.replace('checkout/', '');
