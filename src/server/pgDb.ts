@@ -20,6 +20,7 @@ export class DatabaseService {
   private pool: pg.Pool | null = null;
   public isPostgres: boolean = false;
   private isInitialized: boolean = false;
+  private localOtpResets: Map<string, { otp: string; expiresAt: number }> = new Map();
 
   constructor() {
     const dbUrl = process.env.DATABASE_URL;
@@ -169,6 +170,18 @@ export class DatabaseService {
             value JSONB,
             updated_at TIMESTAMPTZ DEFAULT NOW()
           );
+        `);
+
+        // 7. Password Resets (Email OTP) table
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS password_resets (
+            id VARCHAR(255) PRIMARY KEY,
+            email VARCHAR(255) NOT NULL,
+            otp_code VARCHAR(10) NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_pwd_resets_email ON password_resets(email);
         `);
 
         // Seed initial data if tables are fresh
@@ -1455,6 +1468,102 @@ export class DatabaseService {
       created_at: typeof row.created_at === 'object' ? row.created_at.toISOString() : row.created_at,
       updated_at: typeof row.updated_at === 'object' ? row.updated_at.toISOString() : row.updated_at
     };
+  }
+
+  // ==========================================
+  // PASSWORD RESET (EMAIL OTP)
+  // ==========================================
+  public async savePasswordResetOtp(email: string, otpCode: string, expiresMinutes = 15): Promise<void> {
+    const cleanEmail = email.trim().toLowerCase();
+    const id = `otp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const expiresAt = new Date(Date.now() + expiresMinutes * 60 * 1000);
+
+    // In-memory fallback
+    this.localOtpResets.set(cleanEmail, { otp: otpCode, expiresAt: expiresAt.getTime() });
+
+    if (this.isPostgres && this.pool) {
+      try {
+        await this.pool.query('DELETE FROM password_resets WHERE LOWER(email) = $1', [cleanEmail]);
+        await this.pool.query(
+          `INSERT INTO password_resets (id, email, otp_code, expires_at, created_at)
+           VALUES ($1, $2, $3, $4, NOW())`,
+          [id, cleanEmail, otpCode, expiresAt.toISOString()]
+        );
+      } catch (err) {
+        console.error('[PostgreSQL] Failed to save OTP in DB, fallback in memory:', err);
+      }
+    }
+  }
+
+  public async verifyPasswordResetOtp(email: string, otpCode: string): Promise<boolean> {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanOtp = otpCode.trim();
+
+    // Check Postgres
+    if (this.isPostgres && this.pool) {
+      try {
+        const res = await this.pool.query(
+          `SELECT * FROM password_resets 
+           WHERE LOWER(email) = $1 AND otp_code = $2 AND expires_at > NOW()
+           ORDER BY created_at DESC LIMIT 1`,
+          [cleanEmail, cleanOtp]
+        );
+        if (res.rows.length > 0) {
+          return true;
+        }
+      } catch (err) {
+        console.error('[PostgreSQL] Error verifying OTP in DB:', err);
+      }
+    }
+
+    // Fallback in-memory
+    const memoryOtp = this.localOtpResets.get(cleanEmail);
+    if (memoryOtp && memoryOtp.otp === cleanOtp && memoryOtp.expiresAt > Date.now()) {
+      return true;
+    }
+
+    return false;
+  }
+
+  public async resetPasswordWithOtp(email: string, otpCode: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    const isValid = await this.verifyPasswordResetOtp(cleanEmail, otpCode);
+    if (!isValid) {
+      return { success: false, error: 'Invalid or expired OTP verification code. Please request a new code.' };
+    }
+
+    const salt = bcrypt.genSaltSync(10);
+    const passwordHash = bcrypt.hashSync(newPassword.trim(), salt);
+    const now = new Date().toISOString();
+
+    // Delete used OTP
+    this.localOtpResets.delete(cleanEmail);
+    if (this.isPostgres && this.pool) {
+      try {
+        await this.pool.query('DELETE FROM password_resets WHERE LOWER(email) = $1', [cleanEmail]);
+
+        // 1. Update user if exists
+        await this.pool.query(
+          'UPDATE users SET password_hash = $1, updated_at = $2 WHERE LOWER(email) = $3',
+          [passwordHash, now, cleanEmail]
+        );
+
+        // 2. Update admin if exists
+        await this.pool.query(
+          'UPDATE admins SET password_hash = $1, updated_at = $2 WHERE LOWER(email) = $3',
+          [passwordHash, now, cleanEmail]
+        );
+      } catch (err) {
+        console.error('[PostgreSQL] Error updating password after OTP:', err);
+      }
+    }
+
+    // Update local JSON fallback if present
+    try {
+      jsonDb.setAdminPassword(cleanEmail, newPassword);
+    } catch {}
+
+    return { success: true };
   }
 }
 

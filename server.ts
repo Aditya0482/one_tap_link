@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { createServer as createViteServer } from 'vite';
 import { pgDb } from './src/server/pgDb';
+import { sendOtpEmail } from './src/server/email';
 import { TemplateStatus, PaymentStatus, AccessStatus } from './src/types';
 
 // In-memory session store for tokens (both admin and user)
@@ -118,6 +119,107 @@ async function startServer() {
     } catch (err: any) {
       console.error('Customer login error:', err);
       res.status(500).json({ error: 'Login failed.' });
+    }
+  });
+
+  // ==========================================
+  // FORGOT PASSWORD (RESEND EMAIL OTP)
+  // ==========================================
+
+  // 1. Send Password Reset OTP
+  app.post('/api/auth/forgot-password/send-otp', async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email || !email.trim()) {
+        return res.status(400).json({ error: 'Please enter your registered email address.' });
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
+
+      // Check if user or admin exists
+      const user = await pgDb.getUserByEmail(cleanEmail);
+      const isExistingAdmin = cleanEmail === 'admin@onetaplink.com' || (process.env.ADMIN_EMAIL && cleanEmail === process.env.ADMIN_EMAIL.toLowerCase());
+
+      if (!user && !isExistingAdmin) {
+        return res.status(404).json({ error: 'No account found with this email address. Please verify your email or sign up.' });
+      }
+
+      const userName = user?.displayName || cleanEmail.split('@')[0];
+      // Generate 6-digit numeric code
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+      // Store in DB / Memory (15 min validity)
+      await pgDb.savePasswordResetOtp(cleanEmail, otp, 15);
+
+      // Send live email via Resend API
+      const emailResult = await sendOtpEmail({
+        to: cleanEmail,
+        otp,
+        userName
+      });
+
+      res.json({
+        success: true,
+        message: 'A 6-digit verification code has been sent to your email.',
+        simulated: emailResult.simulated || false
+      });
+    } catch (err: any) {
+      console.error('Send OTP error:', err);
+      res.status(500).json({ error: 'Failed to send verification code. Please try again.' });
+    }
+  });
+
+  // 2. Verify OTP Code
+  app.post('/api/auth/forgot-password/verify-otp', async (req, res) => {
+    try {
+      const { email, otp } = req.body;
+      if (!email || !otp) {
+        return res.status(400).json({ error: 'Email and verification code are required.' });
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanOtp = otp.trim();
+
+      const isValid = await pgDb.verifyPasswordResetOtp(cleanEmail, cleanOtp);
+      if (!isValid) {
+        return res.status(400).json({ error: 'Invalid or expired verification code. Please request a new code.' });
+      }
+
+      res.json({ success: true, message: 'OTP verified successfully.' });
+    } catch (err: any) {
+      console.error('Verify OTP error:', err);
+      res.status(500).json({ error: 'Verification failed.' });
+    }
+  });
+
+  // 3. Reset Password with Verified OTP
+  app.post('/api/auth/forgot-password/reset', async (req, res) => {
+    try {
+      const { email, otp, newPassword } = req.body;
+      if (!email || !otp || !newPassword) {
+        return res.status(400).json({ error: 'Email, verification code, and new password are required.' });
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanOtp = otp.trim();
+      const cleanPassword = newPassword.trim();
+
+      if (cleanPassword.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+      }
+
+      const result = await pgDb.resetPasswordWithOtp(cleanEmail, cleanOtp, cleanPassword);
+      if (!result.success) {
+        return res.status(400).json({ error: result.error || 'Failed to reset password.' });
+      }
+
+      res.json({
+        success: true,
+        message: 'Your password has been reset successfully! You can now sign in with your new password.'
+      });
+    } catch (err: any) {
+      console.error('Reset password error:', err);
+      res.status(500).json({ error: 'Failed to reset password. Please try again.' });
     }
   });
 

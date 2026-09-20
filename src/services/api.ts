@@ -173,6 +173,39 @@ export const api = {
     return data;
   },
 
+  async sendPasswordResetOtp(email: string): Promise<{ success: boolean; message: string; simulated?: boolean }> {
+    const res = await fetch('/api/auth/forgot-password/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    const data = await res.json().catch(() => ({ error: 'Failed to send OTP' }));
+    if (!res.ok) throw new Error(data.error || 'Failed to send OTP code');
+    return data;
+  },
+
+  async verifyPasswordResetOtp(email: string, otp: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch('/api/auth/forgot-password/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp })
+    });
+    const data = await res.json().catch(() => ({ error: 'Failed to verify OTP' }));
+    if (!res.ok) throw new Error(data.error || 'Invalid OTP code');
+    return data;
+  },
+
+  async resetPasswordWithOtp(email: string, otp: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch('/api/auth/forgot-password/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp, newPassword })
+    });
+    const data = await res.json().catch(() => ({ error: 'Failed to reset password' }));
+    if (!res.ok) throw new Error(data.error || 'Failed to reset password');
+    return data;
+  },
+
   async getCurrentUser(token?: string): Promise<User | null> {
     const activeToken = token || localStorage.getItem('onetap_customer_token');
     if (!activeToken) return null;
