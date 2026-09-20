@@ -497,6 +497,21 @@ export class DatabaseService {
     return jsonDb.getAdminById(id);
   }
 
+  public async getAdminByEmail(email: string): Promise<AdminUser | null> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (this.isPostgres && this.pool) {
+      const res = await this.pool.query('SELECT id, email, created_at FROM admins WHERE LOWER(email) = $1', [cleanEmail]);
+      if (res.rows.length > 0) {
+        return {
+          id: res.rows[0].id,
+          email: res.rows[0].email,
+          created_at: res.rows[0].created_at
+        };
+      }
+    }
+    return null;
+  }
+
   // ==========================================
   // TEMPLATES MANAGEMENT (POSTGRESQL)
   // ==========================================

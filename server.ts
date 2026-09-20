@@ -144,11 +144,15 @@ async function startServer() {
 
       const cleanEmail = email.trim().toLowerCase();
 
-      // Check if user or admin exists
+      // Check if user exists
       const user = await pgDb.getUserByEmail(cleanEmail);
-      const isExistingAdmin = cleanEmail === 'admin@onetaplink.com' || (process.env.ADMIN_EMAIL && cleanEmail === process.env.ADMIN_EMAIL.toLowerCase());
 
-      if (!user && !isExistingAdmin) {
+      // Check if admin exists — first hardcoded/env, then actual DB admins table
+      const isHardcodedAdmin = cleanEmail === 'admin@onetaplink.com' || (process.env.ADMIN_EMAIL && cleanEmail === process.env.ADMIN_EMAIL.toLowerCase());
+      const dbAdmin = isHardcodedAdmin ? null : await pgDb.getAdminByEmail(cleanEmail).catch(() => null);
+      const adminExists = isHardcodedAdmin || !!dbAdmin;
+
+      if (!user && !adminExists) {
         return res.status(404).json({ error: 'No account found with this email address. Please verify your email or sign up.' });
       }
 
