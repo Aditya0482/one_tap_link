@@ -398,18 +398,18 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
               </button>
 
               {/* Resend OTP Bar */}
-              <div className="pt-2 text-center text-xs text-[#64748B] flex items-center justify-center gap-1.5">
+              <div className="pt-2 text-center text-xs flex items-center justify-center gap-1.5">
                 {resendCooldown > 0 ? (
-                  <span className="flex items-center gap-1.5 text-slate-500">
-                    <RotateCcw className="w-3.5 h-3.5 animate-spin" />
-                    Resend verification code in <strong>{resendCooldown}s</strong>
+                  <span className="flex items-center gap-1.5 text-red-600 font-semibold bg-red-50/80 px-3 py-1.5 rounded-lg border border-red-200">
+                    <RotateCcw className="w-3.5 h-3.5 animate-spin text-red-600" />
+                    <span>Resend verification code in <strong className="text-red-700 font-bold">{resendCooldown}s</strong></span>
                   </span>
                 ) : (
                   <button
                     type="button"
                     onClick={() => handleSendOtp()}
                     disabled={loading}
-                    className="flex items-center gap-1 font-bold text-[#6D5DFB] hover:underline cursor-pointer"
+                    className="flex items-center gap-1.5 font-bold text-red-600 hover:text-red-700 hover:underline cursor-pointer bg-red-50/60 hover:bg-red-50 px-3 py-1.5 rounded-lg border border-red-200 transition-colors"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     Didn't receive code? Resend Code
@@ -470,20 +470,9 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
               {mode !== 'forgot' && (
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-semibold text-[#111827]">
-                      Password
-                    </label>
-                    {mode === 'signin' && (
-                      <button
-                        type="button"
-                        onClick={() => switchMode('forgot')}
-                        className="text-[11px] font-semibold text-[#6D5DFB] hover:underline cursor-pointer"
-                      >
-                        Forgot password?
-                      </button>
-                    )}
-                  </div>
+                  <label className="block text-xs font-semibold text-[#111827] mb-1">
+                    Password
+                  </label>
                   <div className="relative">
                     <Lock className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
@@ -504,6 +493,17 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                       {showPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                     </button>
                   </div>
+                  {mode === 'signin' && (
+                    <div className="mt-1.5 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => switchMode('forgot')}
+                        className="text-xs font-semibold text-red-600 hover:text-red-700 hover:underline cursor-pointer transition-colors"
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
