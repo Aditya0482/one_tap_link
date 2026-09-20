@@ -240,13 +240,20 @@ class Database {
       }
     }
 
-    // Permanent Orders Sync: Merge any orders from orders_permanent.json
+    // Permanent Orders Sync: Merge any real orders from orders_permanent.json
     try {
       if (fs.existsSync(ORDERS_PERM_FILE)) {
         const ordRaw = fs.readFileSync(ORDERS_PERM_FILE, 'utf-8');
         const permOrders: Order[] = JSON.parse(ordRaw);
         if (Array.isArray(permOrders)) {
           for (const po of permOrders) {
+            // Never re-inject dummy/test seed orders
+            const isDummy = po.customer_email?.toLowerCase().includes('example.com') ||
+                            po.id === 'ord_1789890533083_HLFD' ||
+                            po.id === 'ord_1789888694728_8MUL' ||
+                            po.id === 'ord_1788770661911_PMXY';
+            if (isDummy) continue;
+
             const exists = baseData.orders.some(o => 
               o.id === po.id || 
               (po.razorpay_payment_id && o.razorpay_payment_id === po.razorpay_payment_id) ||

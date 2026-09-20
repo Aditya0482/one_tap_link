@@ -121,11 +121,61 @@
           "Status"
         ],
         "rows": [
-          { "cells": ["Sep 01", "Housing", "Monthly Rent / Mortgage", "$1,500", "$1,500", "$0", "Paid"] },
-          { "cells": ["Sep 03", "Consulting Income", "Client Retainer Q3", "$4,500", "$4,500", "$0", "Received"] },
-          { "cells": ["Sep 05", "Groceries", "Organic Produce & Market", "$450", "$410", "+$40", "Under Budget"] },
-          { "cells": ["Sep 08", "Software", "Cloud & Productivity Tools", "$120", "$120", "$0", "Paid"] },
-          { "cells": ["Sep 12", "Investments", "Index Funds & S&P 500", "$2,000", "$2,000", "$0", "Executed"] }
+          {
+            "cells": [
+              "Sep 01",
+              "Housing",
+              "Monthly Rent / Mortgage",
+              "$1,500",
+              "$1,500",
+              "$0",
+              "Paid"
+            ]
+          },
+          {
+            "cells": [
+              "Sep 03",
+              "Consulting Income",
+              "Client Retainer Q3",
+              "$4,500",
+              "$4,500",
+              "$0",
+              "Received"
+            ]
+          },
+          {
+            "cells": [
+              "Sep 05",
+              "Groceries",
+              "Organic Produce & Market",
+              "$450",
+              "$410",
+              "+$40",
+              "Under Budget"
+            ]
+          },
+          {
+            "cells": [
+              "Sep 08",
+              "Software",
+              "Cloud & Productivity Tools",
+              "$120",
+              "$120",
+              "$0",
+              "Paid"
+            ]
+          },
+          {
+            "cells": [
+              "Sep 12",
+              "Investments",
+              "Index Funds & S&P 500",
+              "$2,000",
+              "$2,000",
+              "$0",
+              "Executed"
+            ]
+          }
         ],
         "chartType": "donut",
         "chartData": [
@@ -153,65 +203,7 @@
       }
     }
   ],
-  "orders": [
-    {
-      "id": "ord_1788598846780_603N",
-      "customer_name": "arun",
-      "customer_email": "admin@gmail.com",
-      "user_id": "Kuu3AxsQYdWT5oFhvAWd62wULE12",
-      "template_id": "tpl_master_budget",
-      "template_title": "Master Budget & Wealth Planner",
-      "template_thumbnail": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80",
-      "amount": 499,
-      "currency": "INR",
-      "payment_status": "Paid",
-      "access_status": "Granted",
-      "payment_reference": "pay_TYIZ0JofiAd5hQ",
-      "razorpay_order_id": "order_TYIYvqPWHu67fL",
-      "created_at": "2026-09-05T09:00:46.780Z",
-      "updated_at": "2026-09-05T09:01:06.143Z",
-      "razorpay_payment_id": "pay_TYIZ0JofiAd5hQ",
-      "access_url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/copy"
-    },
-    {
-      "id": "ord_1788598252452_C08V",
-      "customer_name": "Aditya",
-      "customer_email": "admin@gmail.com",
-      "user_id": "Kuu3AxsQYdWT5oFhvAWd62wULE12",
-      "template_id": "tpl_master_budget",
-      "template_title": "Master Budget & Wealth Planner",
-      "template_thumbnail": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80",
-      "amount": 499,
-      "currency": "INR",
-      "payment_status": "Paid",
-      "access_status": "Granted",
-      "payment_reference": "pay_TYIOZY0GHuFeOS",
-      "razorpay_order_id": "order_TYIOT4i4FkL9PL",
-      "created_at": "2026-09-05T08:50:52.452Z",
-      "updated_at": "2026-09-05T08:51:14.960Z",
-      "razorpay_payment_id": "pay_TYIOZY0GHuFeOS",
-      "access_url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/copy"
-    },
-    {
-      "id": "ord_1788593391336_3D7A",
-      "customer_name": "Aditya",
-      "customer_email": "admin@gmail.com",
-      "user_id": "Kuu3AxsQYdWT5oFhvAWd62wULE12",
-      "template_id": "tpl_master_budget",
-      "template_title": "Master Budget & Wealth Planner",
-      "template_thumbnail": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=1200&auto=format&fit=crop&q=80",
-      "amount": 499,
-      "currency": "INR",
-      "payment_status": "Paid",
-      "access_status": "Granted",
-      "payment_reference": "pay_TYH10KTzxiky6E",
-      "razorpay_order_id": "order_TYH0sw47x6LhZA",
-      "created_at": "2026-09-05T07:29:51.336Z",
-      "updated_at": "2026-09-05T07:55:13.500Z",
-      "razorpay_payment_id": "pay_TYH10KTzxiky6E",
-      "access_url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/copy"
-    }
-  ],
+  "orders": [],
   "messages": [],
   "settings": {
     "google_sheet_orders_webhook_url": "https://script.google.com/macros/s/AKfycby1UkDFvBs7xEa3ugjCAPm4TsjYzWEroNb95ITCgO9yf6x-8ELT7Bibq5idr-XKxthV/exec",

@@ -263,41 +263,7 @@ export class DatabaseService {
         console.log('[PostgreSQL] Seeded initial templates.');
       }
 
-      // 3. Seed Orders if any in store
-      const orderCountRes = await client.query('SELECT COUNT(*) FROM orders');
-      if (parseInt(orderCountRes.rows[0].count, 10) === 0) {
-        const storeOrders = jsonDb.getAllOrders();
-        for (const o of storeOrders) {
-          await client.query(
-            `INSERT INTO orders (
-              id, customer_name, customer_email, user_id, template_id, template_title,
-              template_thumbnail, amount, currency, payment_status, access_status,
-              payment_reference, razorpay_order_id, razorpay_payment_id, access_url,
-              created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-            ON CONFLICT (id) DO NOTHING`,
-            [
-              o.id,
-              o.customer_name,
-              o.customer_email.toLowerCase(),
-              o.user_id || null,
-              o.template_id,
-              o.template_title || '',
-              o.template_thumbnail || '',
-              o.amount,
-              o.currency || 'INR',
-              o.payment_status || 'Pending',
-              o.access_status || 'Pending',
-              o.payment_reference || '',
-              o.razorpay_order_id || null,
-              o.razorpay_payment_id || null,
-              o.access_url || null,
-              o.created_at || new Date().toISOString(),
-              o.updated_at || new Date().toISOString()
-            ]
-          );
-        }
-      }
+      // 3. Orders are NOT seeded with dummy data; only real customer purchases are tracked.
     } catch (seedErr) {
       console.warn('[PostgreSQL] Seeding warning:', seedErr);
     }
@@ -1077,8 +1043,7 @@ export class DatabaseService {
     if (this.isPostgres && this.pool) {
       await this.pool.query('DELETE FROM orders');
     }
-    (jsonDb as any).data.orders = [];
-    (jsonDb as any).save();
+    jsonDb.clearTestData(true);
     return true;
   }
 
