@@ -1,4 +1,12 @@
 import 'dotenv/config';
+
+process.on('uncaughtException', (err) => {
+  console.error('[CRITICAL UNCAUGHT EXCEPTION]', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[CRITICAL UNHANDLED REJECTION]', reason);
+});
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -1056,12 +1064,31 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n  🚀 OneTapLink Store is running!`);
+    console.log(`  ➜  Listening on PORT: ${PORT}`);
     console.log(`  ➜  Local:   http://localhost:${PORT}/`);
     console.log(`  ➜  Admin:   http://localhost:${PORT}/admin`);
     console.log(`  ➜  Database: ${pgDb.isPostgres ? 'PostgreSQL' : 'Local File Store'}\n`);
   });
+
+  server.on('error', (err: any) => {
+    console.error(`[Server Error on port ${PORT}]`, err?.message || err);
+  });
+
+  // If Railway assigned a dynamic PORT, also listen on 3000 so custom domain mapped to Port 3000 connects
+  if (PORT !== 3000) {
+    try {
+      const p3000 = app.listen(3000, '0.0.0.0', () => {
+        console.log(`  ➜  Also listening on port 3000 for Railway custom domain router.`);
+      });
+      p3000.on('error', (err: any) => {
+        console.log(`[Notice] Port 3000 bind status:`, err?.message || err);
+      });
+    } catch (e: any) {
+      console.log('[Notice] Could not bind port 3000:', e?.message || e);
+    }
+  }
 }
 
 startServer();

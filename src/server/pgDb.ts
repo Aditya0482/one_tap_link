@@ -34,6 +34,12 @@ export class DatabaseService {
           idleTimeoutMillis: 30000,
           connectionTimeoutMillis: 10000
         });
+
+        // Prevent idle client errors from crashing the Node.js process
+        this.pool.on('error', (err) => {
+          console.error('[PostgreSQL Pool Error (Handled)]', err?.message || err);
+        });
+
         this.isPostgres = true;
         console.log('[PostgreSQL] Database pool created with DATABASE_URL.');
       } catch (err) {
