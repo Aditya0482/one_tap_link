@@ -2,11 +2,28 @@ export interface SendOtpEmailOptions {
   to: string;
   otp: string;
   userName?: string;
+  replyTo?: string;
 }
 
-export async function sendOtpEmail({ to, otp, userName }: SendOtpEmailOptions): Promise<{ success: boolean; messageId?: string; error?: string; simulated?: boolean }> {
+export async function sendOtpEmail({ to, otp, userName, replyTo }: SendOtpEmailOptions): Promise<{ success: boolean; messageId?: string; error?: string; simulated?: boolean }> {
   const apiKey = process.env.RESEND_API_KEY?.trim();
-  const fromEmail = process.env.RESEND_FROM_EMAIL?.trim() || 'OneTapLink <onboarding@resend.dev>';
+  let configuredFrom = process.env.RESEND_FROM_EMAIL?.trim() || 'OneTapLink <onboarding@resend.dev>';
+  let configuredReplyTo = replyTo || process.env.RESEND_REPLY_TO?.trim();
+
+  // If user provided a public email provider like @gmail.com or @yahoo.com as FROM,
+  // Resend API will reject it with 403 because public domains cannot be spoofed.
+  // We automatically set it as reply_to and fallback the from address to onboarding@resend.dev.
+  const isPublicProvider = /@(gmail|yahoo|hotmail|outlook)\.com/i.test(configuredFrom);
+  let fromEmail = configuredFrom;
+
+  if (isPublicProvider) {
+    console.warn(`[Resend Notice] Resend cannot send directly from public email domains (${configuredFrom}) due to Google DMARC policy. Setting ${configuredFrom} as reply_to and using onboarding@resend.dev as sender.`);
+    if (!configuredReplyTo) {
+      configuredReplyTo = configuredFrom;
+    }
+    fromEmail = 'OneTapLink <onboarding@resend.dev>';
+  }
+
   const cleanTo = to.trim().toLowerCase();
   const displayName = userName ? userName.trim() : cleanTo.split('@')[0];
 
@@ -86,18 +103,24 @@ export async function sendOtpEmail({ to, otp, userName }: SendOtpEmailOptions): 
   `;
 
   try {
+    const emailPayload: any = {
+      from: fromEmail,
+      to: [cleanTo],
+      subject: `Your OneTapLink Password Reset Code: ${otp}`,
+      html: htmlContent
+    };
+
+    if (configuredReplyTo) {
+      emailPayload.reply_to = configuredReplyTo;
+    }
+
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: [cleanTo],
-        subject: `Your OneTapLink Password Reset Code: ${otp}`,
-        html: htmlContent
-      })
+      body: JSON.stringify(emailPayload)
     });
 
     const data: any = await response.json();
