@@ -60,16 +60,21 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
   onSelectTemplate,
   onOpenAuth
 }) => {
-  // Load initially from local storage cache, automatically cleaning any legacy duplicates
+  // Load initially from local storage cache — only items belonging to current user
   const [purchases, setPurchases] = useState<PurchaseRecord[]>(() => {
     try {
       const cached = localStorage.getItem('onetaplink_customer_purchases');
       if (cached) {
         const list: PurchaseRecord[] = JSON.parse(cached);
-        const cleanList = deduplicatePurchases(list);
-        if (cleanList.length !== list.length) {
-          localStorage.setItem('onetaplink_customer_purchases', JSON.stringify(cleanList));
-        }
+        const userEmail = (user?.email || '').trim().toLowerCase();
+        // Only include cached purchases that belong to the current user
+        const filtered = userEmail
+          ? list.filter(p => {
+              const cacheEmail = (p.customerEmail || '').trim().toLowerCase();
+              return !cacheEmail || cacheEmail === userEmail;
+            })
+          : []; // No logged-in user → show nothing from cache (fresh fetch will populate)
+        const cleanList = deduplicatePurchases(filtered);
         return cleanList;
       }
       return [];
@@ -99,12 +104,15 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
     try {
       const recordsMap = new Map<string, PurchaseRecord>();
 
-      // 1. Preload any cached purchases
+      // 1. Preload any cached purchases — only if they belong to this user
       try {
         const cached = localStorage.getItem('onetaplink_customer_purchases');
         if (cached) {
           const list: PurchaseRecord[] = JSON.parse(cached);
           list.forEach(p => {
+            // Only include cache entry if email matches current user (skip if mismatch)
+            const cacheEmail = (p.customerEmail || '').trim().toLowerCase();
+            if (targetEmail && cacheEmail && cacheEmail !== targetEmail) return;
             const key = p.productId || p.instamojoPaymentId || p.razorpayPaymentId || p.instamojoPaymentRequestId || p.razorpayOrderId || p.id || 'purchase';
             recordsMap.set(key, p);
           });

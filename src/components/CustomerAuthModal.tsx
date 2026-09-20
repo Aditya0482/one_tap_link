@@ -189,6 +189,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           localStorage.setItem('onetap_customer_token', res.token);
           localStorage.setItem('onetap_customer_user', JSON.stringify(res.user));
         }
+        // Clear any stale purchases cache from a previous user on this device
+        localStorage.removeItem('onetaplink_customer_purchases');
         resetForm();
         onSuccess(res.user, res.token);
         onClose();
@@ -201,6 +203,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           localStorage.setItem('onetap_customer_token', res.token);
           localStorage.setItem('onetap_customer_user', JSON.stringify(res.user));
         }
+        // Clear any stale purchases cache from a previous user on this device
+        localStorage.removeItem('onetaplink_customer_purchases');
         resetForm();
         onSuccess(res.user, res.token);
         onClose();

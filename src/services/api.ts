@@ -227,6 +227,8 @@ export const api = {
     const activeToken = token || localStorage.getItem('onetap_customer_token');
     localStorage.removeItem('onetap_customer_token');
     localStorage.removeItem('onetap_customer_user');
+    // Clear purchases cache so next user on same device doesn't see previous user's purchases
+    localStorage.removeItem('onetaplink_customer_purchases');
     if (activeToken) {
       await fetch('/api/auth/logout', {
         method: 'POST',
