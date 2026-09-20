@@ -393,6 +393,7 @@ export class DatabaseService {
   // ==========================================
   public async verifyAdmin(email: string, password: string): Promise<AdminUser | null> {
     const cleanEmail = email.trim().toLowerCase();
+    const envAdminPass = process.env.ADMIN_PASSWORD?.trim();
 
     if (this.isPostgres && this.pool) {
       const res = await this.pool.query(
@@ -400,12 +401,22 @@ export class DatabaseService {
         [cleanEmail]
       );
       if (res.rows.length === 0) {
-        // Check local JSON fallback in case newly added
+        // If not found in db, but password matches env ADMIN_PASSWORD, register new admin immediately!
+        if (envAdminPass && password === envAdminPass) {
+          return this.setAdminPassword(cleanEmail, password);
+        }
         return jsonDb.verifyAdmin(cleanEmail, password);
       }
       const admin = res.rows[0];
-      const match = bcrypt.compareSync(password, admin.password_hash);
-      if (!match) return null;
+      const isEnvMatch = !!(envAdminPass && password === envAdminPass);
+      const isHashMatch = admin.password_hash ? bcrypt.compareSync(password, admin.password_hash) : false;
+
+      if (!isHashMatch && !isEnvMatch) return null;
+
+      // If matched via env password, sync hash into database
+      if (isEnvMatch && !isHashMatch) {
+        await this.setAdminPassword(cleanEmail, password);
+      }
 
       return {
         id: admin.id,
