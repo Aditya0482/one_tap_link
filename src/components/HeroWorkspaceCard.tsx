@@ -43,18 +43,18 @@ export const HeroWorkspaceCard: React.FC<HeroWorkspaceCardProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-extrabold text-[#111827]">Google Workspace Template</span>
+                <span className="text-xs font-extrabold text-[#111827]">Digital Templates & Systems</span>
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#22C55E]/15 text-[#16A34A]">
                   LIVE READY
                 </span>
               </div>
-              <p className="text-[10px] text-[#64748B]">Auto-syncs directly to your Google Drive</p>
+              <p className="text-[10px] text-[#64748B]">Spreadsheets, Web Apps & Codebases</p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-[#22C55E] animate-pulse" />
-            <span className="text-[11px] font-semibold text-[#16A34A] hidden sm:inline">1-Click Copy</span>
+            <span className="text-[11px] font-semibold text-[#16A34A] hidden sm:inline">Instant Access</span>
           </div>
         </div>
 

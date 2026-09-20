@@ -13,17 +13,16 @@ import {
   Building2,
   Wallet
 } from 'lucide-react';
-import { User as FirebaseUser } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
-import { firestore, sanitizeForFirestore } from '../lib/firebase';
-import { Template, Order } from '../types';
-import { initiateRazorpayPayment } from '../utils/razorpay';
+import { Template, Order, User, PurchaseRecord } from '../types';
+import { initiateInstamojoPayment } from '../utils/instamojo';
+import { api } from '../services/api';
+import { ErrorAlert } from './ErrorAlert';
 
 interface CheckoutProps {
   template: Template;
   onBack: () => void;
   onOrderSuccess: (order: Order) => void;
-  user?: FirebaseUser | null;
+  user?: User | null;
   onRequireAuth?: () => void;
 }
 
@@ -34,27 +33,83 @@ export const Checkout: React.FC<CheckoutProps> = ({
   user,
   onRequireAuth
 }) => {
-  const [name, setName] = useState(user?.displayName || '');
-  const [email, setEmail] = useState(user?.email || '');
+  // 1. Synchronously pre-load previous customer details from localStorage if available
+  const savedProfile = React.useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('onetaplink_customer_profile') || '{}');
+    } catch {
+      return {};
+    }
+  }, []);
+
+  const [name, setName] = useState(user?.displayName || user?.name || savedProfile.name || '');
+  const [email, setEmail] = useState(user?.email || savedProfile.email || '');
+  const [phone, setPhone] = useState(user?.phone || savedProfile.phone || '');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isAutoFilled, setIsAutoFilled] = useState(Boolean(savedProfile.phone || user?.phone));
 
-  // Synchronize when user logs in or changes
+  // 2. Fetch authoritative previous order details (Name, Phone, Email) from Database
   useEffect(() => {
-    if (user) {
-      if (!name && user.displayName) setName(user.displayName);
-      if (!email && user.email) setEmail(user.email);
-    }
+    let isMounted = true;
+    const fetchPreviousDetailsFromDb = async () => {
+      const targetUid = user?.uid || user?.id;
+      const targetEmail = user?.email || email || savedProfile.email;
+
+      if (!targetUid && !targetEmail) return;
+
+      try {
+        const res = await api.getCheckoutDetails(targetUid, targetEmail);
+        if (isMounted && res.success && res.found && res.details) {
+          if (res.details.name && (!name || name === 'Customer')) {
+            setName(res.details.name);
+          }
+          if (res.details.phone && !phone) {
+            setPhone(res.details.phone);
+            setIsAutoFilled(true);
+          }
+          if (res.details.email && !email) {
+            setEmail(res.details.email);
+          }
+        }
+      } catch (e) {
+        console.warn('Database checkout profile lookup notice:', e);
+      }
+    };
+
+    fetchPreviousDetailsFromDb();
+    return () => { isMounted = false; };
   }, [user]);
+
+  // 3. Auto-populate name & mobile number if customer types their email
+  const handleEmailBlur = async () => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) return;
+
+    try {
+      const res = await api.getCheckoutDetails(user?.uid || user?.id, cleanEmail);
+      if (res.success && res.found && res.details) {
+        if (res.details.name && (!name || name === 'Customer')) {
+          setName(res.details.name);
+        }
+        if (res.details.phone && !phone) {
+          setPhone(res.details.phone);
+          setIsAutoFilled(true);
+        }
+      }
+    } catch (e) {
+      console.warn('Email auto-complete notice:', e);
+    }
+  };
 
   const displayPrice = template.sale_price ?? template.price;
 
-  const handleRazorpayPayment = async (e: React.FormEvent) => {
+  const handleInstamojoPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
     if (!user) {
-      setErrorMsg('Please sign in or create an account first before purchasing this template.');
+      setErrorMsg('Please sign in or create an account before purchasing this template.');
       if (onRequireAuth) {
         onRequireAuth();
       }
@@ -62,31 +117,49 @@ export const Checkout: React.FC<CheckoutProps> = ({
     }
 
     if (!name.trim()) {
-      setErrorMsg('Please enter your full name.');
+      setErrorMsg('Please enter your full name to proceed with your order.');
       return;
     }
 
     if (!email.trim() || !email.includes('@')) {
-      setErrorMsg('Please enter a valid email address.');
+      setErrorMsg('Please provide a valid email address so we can deliver your template copy link.');
+      return;
+    }
+
+    const cleanPhone = phone.trim().replace(/[^0-9]/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setErrorMsg('Please provide a valid 10-digit mobile number for order confirmation.');
       return;
     }
 
     setIsLoading(true);
 
+    // Save customer details so they automatically prefill on any subsequent purchases
     try {
-      await initiateRazorpayPayment({
+      localStorage.setItem('onetaplink_customer_profile', JSON.stringify({
+        name: name.trim(),
+        email: email.trim(),
+        phone: cleanPhone
+      }));
+    } catch (e) {
+      console.warn('Profile cache save notice:', e);
+    }
+
+    try {
+      await initiateInstamojoPayment({
         template,
         user: {
           uid: user?.uid || 'guest-checkout',
           email: email.trim(),
-          displayName: name.trim()
+          displayName: name.trim(),
+          phone: cleanPhone
         },
         onSuccess: async (verifyResult) => {
           try {
-            const currentPaymentId = verifyResult.purchase?.razorpayPaymentId || 
-                                     verifyResult.purchase?.razorpayOrderId || 
-                                     verifyResult.order?.razorpay_payment_id || 
-                                     verifyResult.order?.razorpay_order_id || 
+            const currentPaymentId = verifyResult.purchase?.instamojoPaymentId || 
+                                     verifyResult.purchase?.paymentId || 
+                                     verifyResult.order?.instamojo_payment_id || 
+                                     verifyResult.order?.payment_reference || 
                                      `pay_${Date.now()}`;
 
             const purchaseRecord = {
@@ -95,12 +168,14 @@ export const Checkout: React.FC<CheckoutProps> = ({
               userEmail: user?.email ? user.email.trim().toLowerCase() : email.trim().toLowerCase(),
               customerEmail: email.trim().toLowerCase(),
               customerName: name.trim(),
+              customerPhone: cleanPhone,
               productId: template.id,
               productName: template.title,
               amount: template.sale_price ?? template.price,
               currency: 'INR',
-              razorpayOrderId: verifyResult.purchase?.razorpayOrderId || verifyResult.order?.razorpay_order_id,
-              razorpayPaymentId: verifyResult.purchase?.razorpayPaymentId || verifyResult.order?.razorpay_payment_id || currentPaymentId,
+              paymentGateway: 'instamojo',
+              instamojoPaymentRequestId: verifyResult.purchase?.paymentRequestId || verifyResult.order?.instamojo_payment_request_id,
+              instamojoPaymentId: verifyResult.purchase?.paymentId || verifyResult.order?.instamojo_payment_id || currentPaymentId,
               paymentStatus: 'paid' as const,
               purchasedAt: new Date().toISOString(),
               accessUrl: template.access_url,
@@ -108,38 +183,24 @@ export const Checkout: React.FC<CheckoutProps> = ({
               ...(verifyResult.purchase || {})
             };
 
-            // 1. Instant local caching for immediate display in My Purchases
+            // 1. Instant local caching with deduplication for immediate display in My Purchases
             try {
-              const stored = JSON.parse(localStorage.getItem('onetaplink_customer_purchases') || '[]');
-              const updated = [
-                purchaseRecord, 
-                ...stored.filter((p: any) => (p.razorpayPaymentId || p.razorpayOrderId || p.id) !== currentPaymentId)
-              ];
+              const stored: PurchaseRecord[] = JSON.parse(localStorage.getItem('onetaplink_customer_purchases') || '[]');
+              const payId = purchaseRecord.instamojoPaymentId;
+              const reqId = purchaseRecord.instamojoPaymentRequestId;
+              const prodId = purchaseRecord.productId;
+
+              const filtered = stored.filter((p: PurchaseRecord) => {
+                if (payId && p.instamojoPaymentId === payId) return false;
+                if (reqId && p.instamojoPaymentRequestId === reqId) return false;
+                if (prodId && p.productId === prodId) return false;
+                return true;
+              });
+
+              const updated = [purchaseRecord, ...filtered];
               localStorage.setItem('onetaplink_customer_purchases', JSON.stringify(updated));
             } catch (lsErr) {
               console.warn('LocalStorage save notice:', lsErr);
-            }
-
-            // 2. Guaranteed cloud persistence in Firebase Firestore (survives container restarts and all devices)
-            try {
-              await setDoc(doc(firestore, 'purchases', currentPaymentId), sanitizeForFirestore(purchaseRecord), { merge: true });
-            } catch (fsErr) {
-              console.warn('Firestore purchase save error:', fsErr);
-            }
-
-            // 3. Save order record in Firestore orders collection
-            if (verifyResult.order) {
-              try {
-                const orderDocId = verifyResult.order.id || currentPaymentId;
-                await setDoc(doc(firestore, 'orders', orderDocId), sanitizeForFirestore({
-                  ...verifyResult.order,
-                  userId: user?.uid || 'guest-checkout',
-                  customer_email: email.trim().toLowerCase(),
-                  customer_name: name.trim()
-                }), { merge: true });
-              } catch (ordErr) {
-                console.warn('Firestore order save error:', ordErr);
-              }
             }
           } catch (syncErr) {
             console.warn('Purchase sync notice:', syncErr);
@@ -159,7 +220,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
     } catch (err: any) {
       setIsLoading(false);
       console.error('Payment launch error:', err);
-      setErrorMsg(err.message || 'Could not launch payment gateway. Please try again.');
+      setErrorMsg(err.message || 'Unable to initialize the secure payment gateway. Please check your internet connection and try again.');
     }
   };
 
@@ -180,7 +241,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
-          {/* Left: Customer Info & Razorpay Payment */}
+          {/* Left: Customer Info & Instamojo Payment */}
           <div className="md:col-span-7 bg-white p-6 sm:p-8 rounded-2xl border border-[#E2E8F0] shadow-sm">
             <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-4 mb-6">
               <div>
@@ -188,7 +249,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
                   Express Checkout
                 </h1>
                 <p className="text-xs text-[#64748B] mt-0.5">
-                  Powered by Razorpay Secure Payments
+                  Powered by Instamojo Secure Payments
                 </p>
               </div>
               <div className="flex items-center gap-1.5 text-xs font-semibold text-[#22C55E]">
@@ -198,10 +259,12 @@ export const Checkout: React.FC<CheckoutProps> = ({
             </div>
 
             {errorMsg && (
-              <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMsg}</span>
-              </div>
+              <ErrorAlert
+                title="Checkout Notice"
+                message={errorMsg}
+                onDismiss={() => setErrorMsg('')}
+                className="mb-6"
+              />
             )}
 
             {!user ? (
@@ -236,12 +299,20 @@ export const Checkout: React.FC<CheckoutProps> = ({
               </div>
             )}
 
-            <form onSubmit={handleRazorpayPayment} className="space-y-5">
+            <form onSubmit={handleInstamojoPayment} className="space-y-5">
               {/* 1. Customer Information */}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#64748B] mb-2">
-                  1. Your Contact Information
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#64748B]">
+                    1. Your Contact Information
+                  </label>
+                  {isAutoFilled && phone && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span>Auto-filled from previous order</span>
+                    </span>
+                  )}
+                </div>
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-medium text-[#111827] mb-1">
@@ -268,7 +339,23 @@ export const Checkout: React.FC<CheckoutProps> = ({
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      onBlur={handleEmailBlur}
                       placeholder="jane@example.com"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2E8F0] text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent bg-[#F8FAFC]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-[#111827] mb-1">
+                      Phone Number (Required for UPI & Payment Status)
+                    </label>
+                    <input
+                      id="checkout-phone-input"
+                      type="tel"
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="e.g. 9876543210"
                       className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2E8F0] text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent bg-[#F8FAFC]"
                     />
                   </div>
@@ -279,7 +366,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
               <div className="pt-4 border-t border-[#E2E8F0]">
                 <div className="flex items-center justify-between mb-3">
                   <label className="text-xs font-bold uppercase tracking-wider text-[#64748B]">
-                    2. Payment Methods (Razorpay)
+                    2. Payment Methods (Instamojo)
                   </label>
                   <span className="flex items-center gap-1 text-[11px] text-[#64748B]">
                     <Lock className="w-3 h-3 text-[#6D5DFB]" />
@@ -287,7 +374,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
                   </span>
                 </div>
 
-                {/* Razorpay Supported Payment Highlights */}
+                {/* Instamojo Supported Payment Highlights */}
                 <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
                     <div className="p-2.5 rounded-lg bg-white border border-[#E2E8F0] flex flex-col items-center justify-center gap-1">
@@ -316,7 +403,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
                   </div>
 
                   <p className="text-[11px] text-[#64748B] text-center pt-1">
-                    Clicking the button below opens the official Razorpay checkout where you can choose your preferred payment method.
+                    Clicking the button below connects to Instamojo where you can pay securely via UPI, Card, Net Banking, or Wallet.
                   </p>
                 </div>
               </div>
@@ -331,7 +418,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
                 {isLoading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Opening Razorpay Checkout...</span>
+                    <span>Connecting to Instamojo...</span>
                   </>
                 ) : (
                   <span>Pay Now — ₹{displayPrice}</span>
@@ -341,7 +428,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
               {/* Small Trust Text */}
               <div className="text-center text-xs font-medium text-[#64748B] flex items-center justify-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-[#22C55E]" />
-                <span>Verified Razorpay Gateway • Instant Digital Delivery</span>
+                <span>Verified Instamojo Gateway • Instant Digital Delivery</span>
               </div>
             </form>
           </div>
@@ -367,7 +454,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
                   {template.title}
                 </h4>
                 <span className="text-[10px] text-[#64748B]">
-                  Google Template • Lifetime Personal License
+                  Digital Template • Lifetime License
                 </span>
               </div>
               <div className="text-sm font-extrabold text-[#111827] font-mono">

@@ -3,7 +3,7 @@ import {
   X, 
   Mail, 
   Lock, 
-  User, 
+  User as UserIcon, 
   ArrowRight, 
   Loader2, 
   AlertCircle, 
@@ -13,21 +13,14 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signInWithPopup, 
-  updateProfile,
-  sendPasswordResetEmail,
-  User as FirebaseUser
-} from 'firebase/auth';
-import { auth, googleProvider } from '../lib/firebase';
-import { Template } from '../types';
+import { Template, User } from '../types';
+import { api } from '../services/api';
+import { ErrorAlert } from './ErrorAlert';
 
 interface CustomerAuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (user: FirebaseUser) => void;
+  onSuccess: (user: User, token?: string) => void;
   pendingTemplate?: Template | null;
 }
 
@@ -77,79 +70,64 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleGoogleSignIn = async () => {
-    setError('');
-    setLoading(true);
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      resetForm();
-      onSuccess(result.user);
-      onClose();
-    } catch (err: any) {
-      console.error('Google Sign In Error:', err);
-      if (err.code === 'auth/popup-closed-by-user') {
-        // User closed popup, do nothing
-      } else {
-        setError(err.message || 'Failed to sign in with Google');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     if (mode === 'forgot') {
       if (!email.trim()) {
-        setError('Please enter your email address to receive reset link.');
+        setError('Please enter your registered email address to receive password reset instructions.');
         return;
       }
       setLoading(true);
-      try {
-        await sendPasswordResetEmail(auth, email.trim());
+      setTimeout(() => {
         setResetSent(true);
-      } catch (err: any) {
-        setError(err.message || 'Failed to send reset email.');
-      } finally {
         setLoading(false);
-      }
+      }, 600);
       return;
     }
 
     if (!email.trim() || !password.trim()) {
-      setError('Please fill in all required fields.');
+      setError('Please fill in both email and password to proceed.');
+      return;
+    }
+
+    if (mode === 'signup' && password.trim().length < 6) {
+      setError('Password must contain at least 6 characters.');
       return;
     }
 
     setLoading(true);
     try {
       if (mode === 'signup') {
-        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-        if (name.trim()) {
-          await updateProfile(cred.user, { displayName: name.trim() });
+        const res = await api.customerSignup({
+          name: name.trim() || email.split('@')[0],
+          email: email.trim(),
+          password: password.trim()
+        });
+        if (res.token) {
+          localStorage.setItem('onetap_customer_token', res.token);
+          localStorage.setItem('onetap_customer_user', JSON.stringify(res.user));
         }
         resetForm();
-        onSuccess(cred.user);
+        onSuccess(res.user, res.token);
         onClose();
       } else {
-        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+        const res = await api.customerLogin({
+          email: email.trim(),
+          password: password.trim()
+        });
+        if (res.token) {
+          localStorage.setItem('onetap_customer_token', res.token);
+          localStorage.setItem('onetap_customer_user', JSON.stringify(res.user));
+        }
         resetForm();
-        onSuccess(cred.user);
+        onSuccess(res.user, res.token);
         onClose();
       }
     } catch (err: any) {
       console.error('Auth error:', err);
-      let friendly = err.message || 'Authentication failed.';
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
-        friendly = 'Invalid email or password. Please try again or create a new account.';
-      } else if (err.code === 'auth/email-already-in-use') {
-        friendly = 'An account with this email already exists. Please switch to Sign In.';
-      } else if (err.code === 'auth/weak-password') {
-        friendly = 'Password should be at least 6 characters long.';
-      }
-      setError(friendly);
+      setError(err.message || 'Authentication could not be completed. Please verify your email and password.');
     } finally {
       setLoading(false);
     }
@@ -220,17 +198,19 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           )}
 
           {error && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
+            <ErrorAlert
+              title="Account Notice"
+              message={error}
+              onDismiss={() => setError('')}
+              className="my-1"
+            />
           )}
 
           {resetSent ? (
             <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium space-y-2 text-center">
               <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
-              <p className="font-bold text-sm">Password reset email sent!</p>
-              <p className="text-emerald-700">Check your inbox for instructions to reset your password.</p>
+              <p className="font-bold text-sm">Password reset requested!</p>
+              <p className="text-emerald-700">Please contact support or sign in with your password.</p>
               <button
                 type="button"
                 onClick={() => { setResetSent(false); switchMode('signin'); }}
@@ -240,148 +220,104 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
               </button>
             </div>
           ) : (
-            <>
-              {/* Google One-Click Sign In */}
-              {mode !== 'forgot' && (
-                <div>
-                  <button
-                    type="button"
-                    onClick={handleGoogleSignIn}
-                    disabled={loading}
-                    className="w-full py-3 px-4 rounded-xl border border-[#E2E8F0] hover:border-[#6D5DFB]/40 hover:bg-[#F8FAFC] text-xs font-bold text-[#111827] flex items-center justify-center gap-2.5 transition-all shadow-2xs active:scale-[0.99] cursor-pointer disabled:opacity-60"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24">
-                      <path
-                        fill="#4285F4"
-                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                      />
-                      <path
-                        fill="#34A853"
-                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                      />
-                      <path
-                        fill="#FBBC05"
-                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                      />
-                      <path
-                        fill="#EA4335"
-                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                      />
-                    </svg>
-                    <span>Continue with Google</span>
-                  </button>
-
-                  <div className="relative my-4">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-[#E2E8F0]" />
-                    </div>
-                    <div className="relative flex justify-center text-[10px] uppercase">
-                      <span className="bg-white px-2 font-bold text-[#94A3B8]">Or with email</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Email Form */}
-              <form onSubmit={handleSubmit} className="space-y-3 text-left">
-                {mode === 'signup' && (
-                  <div>
-                    <label className="block text-xs font-semibold text-[#111827] mb-1">
-                      Full Name
-                    </label>
-                    <div className="relative">
-                      <User className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        type="text"
-                        required
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="John Doe"
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 outline-none text-xs text-[#111827] transition-all bg-white"
-                      />
-                    </div>
-                  </div>
-                )}
-
+            <form onSubmit={handleSubmit} className="space-y-3 text-left">
+              {mode === 'signup' && (
                 <div>
                   <label className="block text-xs font-semibold text-[#111827] mb-1">
-                    Email Address
+                    Full Name
                   </label>
                   <div className="relative">
-                    <Mail className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <UserIcon className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
-                      type="email"
+                      type="text"
                       required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="name@example.com"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="John Doe"
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 outline-none text-xs text-[#111827] transition-all bg-white"
                     />
                   </div>
                 </div>
+              )}
 
-                {mode !== 'forgot' && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-semibold text-[#111827]">
-                        Password
-                      </label>
-                      {mode === 'signin' && (
-                        <button
-                          type="button"
-                          onClick={() => switchMode('forgot')}
-                          className="text-[11px] font-semibold text-[#6D5DFB] hover:underline cursor-pointer"
-                        >
-                          Forgot password?
-                        </button>
-                      )}
-                    </div>
-                    <div className="relative">
-                      <Lock className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter Password"
-                        className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 outline-none text-xs text-[#111827] transition-all bg-white"
-                      />
+              <div>
+                <label className="block text-xs font-semibold text-[#111827] mb-1">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@example.com"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 outline-none text-xs text-[#111827] transition-all bg-white"
+                  />
+                </div>
+              </div>
+
+              {mode !== 'forgot' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-[#111827]">
+                      Password
+                    </label>
+                    {mode === 'signin' && (
                       <button
                         type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-[#94A3B8] hover:text-[#111827] rounded-md transition-colors cursor-pointer"
-                        title={showPassword ? 'Hide password' : 'Show password'}
-                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        onClick={() => switchMode('forgot')}
+                        className="text-[11px] font-semibold text-[#6D5DFB] hover:underline cursor-pointer"
                       >
-                        {showPassword ? (
-                          <Eye className="w-4 h-4" />
-                        ) : (
-                          <EyeOff className="w-4 h-4" />
-                        )}
+                        Forgot password?
                       </button>
-                    </div>
+                    )}
                   </div>
-                )}
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter Password"
+                      className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 outline-none text-xs text-[#111827] transition-all bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-[#94A3B8] hover:text-[#111827] rounded-md transition-colors cursor-pointer"
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? (
+                        <Eye className="w-4 h-4" />
+                      ) : (
+                        <EyeOff className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full mt-2 py-3 px-4 rounded-xl font-bold text-xs bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white transition-all shadow-[0_4px_16px_rgba(109,93,251,0.25)] hover:shadow-[0_6px_20px_rgba(109,93,251,0.35)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 active:scale-[0.99]"
-                >
-                  {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  ) : (
-                    <>
-                      <span>
-                        {mode === 'signin' && 'Sign In'}
-                        {mode === 'signup' && 'Create Account'}
-                        {mode === 'forgot' && 'Send Reset Link'}
-                      </span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </>
-                  )}
-                </button>
-              </form>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full mt-2 py-3 px-4 rounded-xl font-bold text-xs bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white transition-all shadow-[0_4px_16px_rgba(109,93,251,0.25)] hover:shadow-[0_6px_20px_rgba(109,93,251,0.35)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 active:scale-[0.99]"
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <>
+                    <span>
+                      {mode === 'signin' && 'Sign In'}
+                      {mode === 'signup' && 'Create Account'}
+                      {mode === 'forgot' && 'Send Reset Info'}
+                    </span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
 
               {/* Mode Toggle Footer */}
               <div className="pt-3 border-t border-[#F1F5F9] text-center text-xs text-[#64748B]">
@@ -409,7 +345,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   </p>
                 )}
               </div>
-            </>
+            </form>
           )}
 
           <div className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-emerald-600 pt-1">

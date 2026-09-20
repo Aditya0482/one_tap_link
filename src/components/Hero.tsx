@@ -19,9 +19,9 @@ interface HeroProps {
 }
 
 const TYPEWRITER_PHRASES = [
-  'Ready to Use',
-  'Ready to Edit',
-  'Ready to Save time',
+  'Ready to Launch',
+  'Ready to Customize',
+  'Ready to Scale',
   'Ready to Download'
 ];
 
@@ -75,12 +75,12 @@ export const Hero: React.FC<HeroProps> = ({
             {/* Small Highlight Pill */}
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#6D5DFB]/10 border border-[#6D5DFB]/20 text-[#6D5DFB] text-xs font-semibold mb-6">
               <Sparkles className="w-3.5 h-3.5 text-[#6D5DFB]" />
-              <span>Digital Google Templates Studio</span>
+              <span>Premium Digital Templates Studio</span>
             </div>
 
             {/* Headline with Typewriter Effect */}
             <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-[#111827] tracking-tight leading-[1.2] min-h-[2.4em] sm:min-h-[2.4em]">
-              <span className="block">Beautiful Google Templates.</span>
+              <span className="block">Premium Digital Templates.</span>
               <span className="text-[#6D5DFB] inline-flex items-baseline break-words sm:whitespace-nowrap mt-1">
                 <span>{displayText || '\u00A0'}</span>
                 <span 
@@ -92,7 +92,7 @@ export const Hero: React.FC<HeroProps> = ({
 
             {/* Subheadline */}
             <p className="mt-4 sm:mt-5 text-sm sm:text-base md:text-lg text-[#64748B] leading-relaxed max-w-xl mx-auto lg:mx-0">
-              Save time with professionally designed templates that are simple to customize and ready to use instantly.
+              Save hundreds of hours with production-ready website templates, smart spreadsheets, and digital systems built to customize in minutes.
             </p>
 
             {/* Primary Action Button & Secondary Trust Link */}
@@ -116,21 +116,21 @@ export const Hero: React.FC<HeroProps> = ({
             {/* Micro Highlights */}
             <div className="mt-8 pt-6 border-t border-[#E2E8F0] grid grid-cols-3 gap-2 sm:gap-4 w-full text-center lg:text-left">
               <div>
-                <div className="text-[11px] sm:text-xs font-bold text-[#111827]">One-Click Copy</div>
-                <div className="text-[10px] sm:text-[11px] text-[#64748B] mt-0.5">To Google Drive</div>
+                <div className="text-[11px] sm:text-xs font-bold text-[#111827]">Instant Delivery</div>
+                <div className="text-[10px] sm:text-[11px] text-[#64748B] mt-0.5">Direct source & files</div>
               </div>
               <div>
-                <div className="text-[11px] sm:text-xs font-bold text-[#111827]">Zero Math</div>
-                <div className="text-[10px] sm:text-[11px] text-[#64748B] mt-0.5">Pre-built formulas</div>
+                <div className="text-[11px] sm:text-xs font-bold text-[#111827]">Production Ready</div>
+                <div className="text-[10px] sm:text-[11px] text-[#64748B] mt-0.5">Clean & customizable</div>
               </div>
               <div>
                 <div className="text-[11px] sm:text-xs font-bold text-[#111827]">Lifetime Access</div>
-                <div className="text-[10px] sm:text-[11px] text-[#64748B] mt-0.5">No subscriptions</div>
+                <div className="text-[10px] sm:text-[11px] text-[#64748B] mt-0.5">Zero subscriptions</div>
               </div>
             </div>
           </div>
 
-          {/* Right Column: Matched Interactive Google Templates Studio Card */}
+          {/* Right Column: Matched Interactive Digital Templates Studio Card */}
           <div className="lg:col-span-6 w-full max-w-md lg:max-w-none mx-auto">
             <HeroWorkspaceCard onBrowseTemplates={onBrowseTemplates} />
           </div>

@@ -51,40 +51,25 @@ import {
 } from './components/InfoModals';
 import { 
   Template, 
-  Order 
+  Order,
+  User
 } from './types';
 import { 
   api 
 } from './services/api';
-import { 
-  auth, 
-  firestore,
-  firebaseSignOut,
-  sanitizeForFirestore
-} from './lib/firebase';
-import { 
-  onAuthStateChanged, 
-  User as FirebaseUser 
-} from 'firebase/auth';
-import { 
-  doc, 
-  setDoc,
-  collection,
-  getDocs
-} from 'firebase/firestore';
 import { 
   Loader2, 
   FileSpreadsheet, 
   Search, 
   ArrowLeft 
 } from 'lucide-react';
-import { initiateRazorpayPayment } from './utils/razorpay';
 
 type AppView = 'home' | 'templates' | 'product' | 'checkout' | 'thankyou' | 'admin' | 'about' | 'contact' | 'policy' | 'my-purchases';
 
 const getInitialView = (): AppView => {
   const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
-  const hash = window.location.hash.replace('#', '').toLowerCase();
+  const rawHash = window.location.hash.replace('#', '').toLowerCase();
+  const hash = rawHash.split('?')[0];
   if (path === '/admin' || hash === 'admin') {
     return 'admin';
   }
@@ -94,7 +79,7 @@ const getInitialView = (): AppView => {
   if (path === '/templates' || hash === 'templates') return 'templates';
   if (hash.startsWith('checkout/') || hash === 'checkout') return 'checkout';
   if (hash.startsWith('product/')) return 'product';
-  if (hash === 'thankyou') return 'thankyou';
+  if (hash.startsWith('thankyou')) return 'thankyou';
   if (hash.startsWith('privacy') || hash.startsWith('terms') || hash.startsWith('delivery') || hash.startsWith('refund') || hash.startsWith('cancellation')) return 'policy';
   return 'home';
 };
@@ -108,8 +93,8 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [activeModal, setActiveModal] = useState<ModalType>(null);
 
-  // Customer Firebase Auth State
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  // Customer Auth State (backed by PostgreSQL)
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [pendingBuyTemplate, setPendingBuyTemplate] = useState<Template | null>(null);
 
@@ -117,58 +102,39 @@ export const App: React.FC = () => {
   const [adminToken, setAdminToken] = useState<string | null>(() => {
     return localStorage.getItem('onetap_admin_token') || null;
   });
-  const [adminUser, setAdminUser] = useState<{ id: string; email: string } | null>(null);
+  const [adminUser, setAdminUser] = useState<{ id: string; email: string } | null>(() => {
+    try {
+      const raw = localStorage.getItem('onetap_admin_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
 
   // Search & Filter in Browse View
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
-  // Listen to Customer Firebase Auth changes
+  // Check Customer Auth on startup
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-    });
-    return () => unsubscribe();
+    const checkCustomerAuth = async () => {
+      try {
+        const user = await api.getCurrentUser();
+        setCurrentUser(user);
+      } catch {
+        setCurrentUser(null);
+      }
+    };
+    checkCustomerAuth();
   }, []);
 
-  // Load published templates from database and Firestore on startup
+  // Load published templates from database on startup
   const fetchTemplates = async () => {
     try {
       setIsLoading(true);
-
-      // 1. Fetch from server backend
-      const serverTemplatesPromise = api.getTemplates().catch(() => [] as Template[]);
-
-      // 2. Fetch from Firestore (permanent cloud database)
-      const firestoreTemplatesPromise = (async () => {
-        try {
-          const snap = await getDocs(collection(firestore, 'templates'));
-          const list: Template[] = [];
-          snap.forEach((d) => {
-            const data = d.data() as Template;
-            list.push({ id: d.id, ...data });
-          });
-          return list;
-        } catch (e) {
-          console.warn('Firestore storefront templates read notice:', e);
-          return [] as Template[];
-        }
-      })();
-
-      const [serverTemplates, firestoreTemplates] = await Promise.all([
-        serverTemplatesPromise,
-        firestoreTemplatesPromise
-      ]);
-
-      // Source of truth: If cloud Firestore has templates, prioritize them to prevent restarted server from overriding
-      let rawTemplates: Template[] = [];
-      if (firestoreTemplates && firestoreTemplates.length > 0) {
-        const pub = firestoreTemplates.filter(t => t.status === 'Published');
-        rawTemplates = pub.length > 0 ? pub : firestoreTemplates;
-      } else {
-        const pub = serverTemplates.filter(t => t.status === 'Published');
-        rawTemplates = pub.length > 0 ? pub : serverTemplates;
-      }
+      const serverTemplates = await api.getTemplates().catch(() => [] as Template[]);
+      const pub = serverTemplates.filter(t => t.status === 'Published');
+      const rawTemplates = pub.length > 0 ? pub : serverTemplates;
 
       // Deduplicate templates by ID, Slug, and Title
       const seenIds = new Set<string>();
@@ -225,8 +191,10 @@ export const App: React.FC = () => {
         try {
           const res = await api.adminVerifySession(adminToken);
           setAdminUser(res.admin);
+          localStorage.setItem('onetap_admin_user', JSON.stringify(res.admin));
         } catch {
           localStorage.removeItem('onetap_admin_token');
+          localStorage.removeItem('onetap_admin_user');
           setAdminToken(null);
           setAdminUser(null);
         }
@@ -239,7 +207,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     const handleUrlRoute = () => {
       const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
-      const hash = window.location.hash.replace('#', '').toLowerCase();
+      const rawHash = window.location.hash.replace('#', '').toLowerCase();
+      const hash = rawHash.split('?')[0];
 
       if (path === '/admin' || hash === 'admin') {
         setCurrentView('admin');
@@ -275,10 +244,48 @@ export const App: React.FC = () => {
         const found = templates.find(t => t.slug?.toLowerCase() === slug || t.id?.toLowerCase() === slug);
         if (found) {
           setSelectedTemplate(found);
-          setCurrentView('product');
         }
-      } else if (hash === 'thankyou') {
+        setCurrentView('product');
+      } else if (hash === 'thankyou' || rawHash.startsWith('thankyou')) {
         setCurrentView('thankyou');
+        const queryStr = window.location.search || (window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
+        const urlParams = new URLSearchParams(queryStr);
+        const orderId = urlParams.get('order_id');
+        if (orderId && (!completedOrder || completedOrder.id !== orderId)) {
+          api.getOrder(orderId).then(order => {
+            if (order) {
+              setCompletedOrder(order);
+              try {
+                const purchaseRecord = {
+                  id: order.instamojo_payment_id || order.payment_reference || order.id,
+                  userId: order.user_id || 'guest-checkout',
+                  userEmail: order.customer_email,
+                  customerEmail: order.customer_email,
+                  customerName: order.customer_name,
+                  customerPhone: order.customer_phone,
+                  productId: order.template_id,
+                  productName: order.template_title,
+                  amount: order.amount,
+                  currency: order.currency || 'INR',
+                  paymentGateway: 'instamojo',
+                  instamojoPaymentRequestId: order.instamojo_payment_request_id,
+                  instamojoPaymentId: order.instamojo_payment_id,
+                  paymentStatus: 'paid' as const,
+                  purchasedAt: order.created_at || new Date().toISOString(),
+                  accessUrl: order.access_url,
+                  thumbnailUrl: order.template_thumbnail
+                };
+                const stored = JSON.parse(localStorage.getItem('onetaplink_customer_purchases') || '[]');
+                const filtered = stored.filter((p: any) => p.productId !== order.template_id && p.id !== purchaseRecord.id);
+                localStorage.setItem('onetaplink_customer_purchases', JSON.stringify([purchaseRecord, ...filtered]));
+              } catch (e) {
+                console.warn('Local purchase cache notice:', e);
+              }
+            }
+          }).catch(err => {
+            console.error('Failed to load redirected order:', err);
+          });
+        }
       } else if (path === '/templates' || hash === 'templates') {
         setCurrentView('templates');
       } else if (!hash || hash === 'home' || hash === '') {
@@ -363,7 +370,7 @@ export const App: React.FC = () => {
   };
 
   const handleCustomerSignOut = async () => {
-    await firebaseSignOut(auth).catch(() => {});
+    await api.customerLogout().catch(() => {});
     setCurrentUser(null);
     if (currentView === 'my-purchases') {
       handleNavigate('home');
@@ -379,6 +386,7 @@ export const App: React.FC = () => {
   // Admin Auth Handlers
   const handleAdminLogin = (token: string, user: { id: string; email: string }) => {
     localStorage.setItem('onetap_admin_token', token);
+    localStorage.setItem('onetap_admin_user', JSON.stringify(user));
     setAdminToken(token);
     setAdminUser(user);
     window.history.pushState(null, '', '/admin');
@@ -386,8 +394,8 @@ export const App: React.FC = () => {
   };
 
   const handleAdminLogout = () => {
-    firebaseSignOut(auth).catch(() => {});
     localStorage.removeItem('onetap_admin_token');
+    localStorage.removeItem('onetap_admin_user');
     setAdminToken(null);
     setAdminUser(null);
     window.history.pushState(null, '', '/');
@@ -469,10 +477,10 @@ export const App: React.FC = () => {
                       <span>Back to home</span>
                     </button>
                     <h1 className="text-3xl font-extrabold text-[#111827] tracking-tight">
-                      All Google Templates
+                      All Digital Templates
                     </h1>
                     <p className="text-sm text-[#64748B] mt-1">
-                      Ready-to-use digital templates for instant copy into Google Drive.
+                      Ready-to-use websites, spreadsheets, and digital systems built for instant launch.
                     </p>
                   </div>
 
@@ -555,15 +563,25 @@ export const App: React.FC = () => {
             )}
 
             {/* VIEW 5: THANK YOU / SUCCESS */}
-            {currentView === 'thankyou' && completedOrder && (
-              <ThankYou
-                order={completedOrder}
-                onBackToStore={() => {
-                  fetchTemplates();
-                  handleNavigate('home');
-                }}
-                onOpenPurchases={() => handleNavigate('my-purchases')}
-              />
+            {currentView === 'thankyou' && (
+              completedOrder ? (
+                <ThankYou
+                  order={completedOrder}
+                  onBackToStore={() => {
+                    fetchTemplates();
+                    handleNavigate('home');
+                  }}
+                  onOpenPurchases={() => handleNavigate('my-purchases')}
+                />
+              ) : (
+                <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center bg-[#F8FAFC]">
+                  <Loader2 className="w-10 h-10 animate-spin text-[#10B981] mb-4" />
+                  <h3 className="text-lg font-bold text-[#111827]">Retrieving your Instamojo Order...</h3>
+                  <p className="text-sm text-[#64748B] mt-1 max-w-sm">
+                    Please wait while we verify your purchase and unlock your digital template.
+                  </p>
+                </div>
+              )
             )}
 
             {/* VIEW 6: MY PURCHASES / USER LIBRARY */}

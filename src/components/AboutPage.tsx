@@ -39,7 +39,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
 
         <div className="max-w-4xl mx-auto text-justify">
           <h1 className="text-3xl sm:text-5xl font-extrabold text-[#111827] tracking-tight leading-tight">
-            We build <span className="text-[#6D5DFB]">smart Google templates</span> that turn messy workflows into effortless clarity.
+            We build <span className="text-[#6D5DFB]">smart digital templates</span> that turn complex projects into effortless clarity.
           </h1>
 
           <p className="mt-5 text-base sm:text-lg text-[#64748B] leading-relaxed">

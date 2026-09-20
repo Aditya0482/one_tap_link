@@ -14,14 +14,13 @@ import {
   ExternalLink,
   Lock
 } from 'lucide-react';
-import { User as FirebaseUser } from 'firebase/auth';
-import { Template } from '../types';
+import { Template, User } from '../types';
 
 interface ProductDetailProps {
   template: Template;
   onBack: () => void;
   onBuyNow: (template: Template) => void;
-  user?: FirebaseUser | null;
+  user?: User | null;
 }
 
 export const ProductDetail: React.FC<ProductDetailProps> = ({
@@ -86,11 +85,11 @@ export const ProductDetail: React.FC<ProductDetailProps> = ({
   const defaultWhatIsIncluded = template.included_items && template.included_items.length > 0
     ? template.included_items
     : [
-        'Fully editable Google template (direct copy to your Drive)',
-        'Professional pre-formatted design with automated calculations',
-        'Easy customization with custom colors, rows & categories',
+        'Complete digital source files & deliverable access',
+        'Production-ready code, sheets, or design architecture',
+        'Easy customization with clean styling and modular assets',
         'Instant digital access immediately after purchase',
-        'Step-by-step PDF & video usage instructions'
+        'Step-by-step PDF setup guide and usage documentation'
       ];
 
   const defaultHowItWorks = [
@@ -102,12 +101,12 @@ export const ProductDetail: React.FC<ProductDetailProps> = ({
     {
       step: '2',
       title: 'Get Access',
-      desc: 'Receive your one-click Google Drive copy link immediately.'
+      desc: 'Receive your instant deliverable or copy link immediately.'
     },
     {
       step: '3',
       title: 'Customize',
-      desc: 'Open the Google template, enter your numbers, and make it your own.'
+      desc: 'Open your template, customize the assets, and make it your own.'
     }
   ];
 
@@ -116,23 +115,23 @@ export const ProductDetail: React.FC<ProductDetailProps> = ({
     : [
         {
           question: 'What do I receive after purchase?',
-          answer: 'Immediately after checkout, you get instant one-click access to copy the full Google template directly into your Google Drive.'
+          answer: 'Immediately after checkout, you receive instant access to download or copy the full template deliverables and documentation.'
         },
         {
           question: 'Can I edit the template?',
-          answer: 'Yes! You have 100% editing permissions. You can change texts, formulas, styling, and duplicate sheets.'
+          answer: 'Yes! You have 100% editing permissions. You can customize code, text, styles, formulas, and layouts.'
         },
         {
           question: 'Do I need special software?',
-          answer: 'No paid software or subscriptions required. It runs on any free Google account in your browser or Google Sheets app.'
+          answer: 'No expensive paid subscriptions required. Standard free development tools or free Google accounts are all that is needed.'
         },
         {
           question: 'How quickly will I receive access?',
-          answer: 'Instant access. You can open the template right from the order confirmation screen.'
+          answer: 'Instant access. You can access the template deliverables right from the order confirmation screen.'
         },
         {
           question: 'Can I get a refund or support?',
-          answer: 'All templates come with 100% verified quality guarantee. If you encounter any technical glitch or formula error, our support team fixes it immediately or provides a prompt resolution.'
+          answer: 'All templates come with 100% verified quality guarantee. If you encounter any technical glitch, our support team fixes it immediately or provides a prompt resolution.'
         }
       ];
 

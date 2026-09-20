@@ -7,7 +7,7 @@ import {
   User as UserIcon,
   LogOut
 } from 'lucide-react';
-import { User as FirebaseUser } from 'firebase/auth';
+import { User } from '../types';
 import { OneTapLogo } from './OneTapLogo';
 
 interface NavbarProps {
@@ -16,7 +16,7 @@ interface NavbarProps {
   onOpenAbout?: () => void;
   onOpenContact?: () => void;
   templateCount?: number;
-  user?: FirebaseUser | null;
+  user?: User | null;
   onOpenAuth?: () => void;
   onSignOut?: () => void;
 }

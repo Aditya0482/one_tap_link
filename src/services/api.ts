@@ -6,7 +6,11 @@ import {
   PaymentStatus, 
   AccessStatus,
   ContactMessage,
-  AppSettings
+  AppSettings,
+  User,
+  InstamojoConfigResponse,
+  InstamojoPaymentRequestResponse,
+  InstamojoVerifyResponse
 } from '../types';
 
 export const api = {
@@ -39,68 +43,69 @@ export const api = {
   async getOrder(orderId: string): Promise<Order> {
     const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`);
     if (!res.ok) throw new Error('Order not found');
-    return res.json();
+    const data = await res.json();
+    return data.order || data;
   },
 
-  // Razorpay Payments
-  async getRazorpayConfig(): Promise<{ key_id: string; is_configured: boolean }> {
-    const res = await fetch('/api/razorpay/config');
+  // Instamojo Payments
+  async getInstamojoConfig(): Promise<InstamojoConfigResponse> {
+    const res = await fetch('/api/instamojo/config');
     if (!res.ok) throw new Error('Failed to fetch payment configuration');
     return res.json();
   },
 
-  async createRazorpayOrder(payload: {
+  async getCheckoutDetails(userId?: string, email?: string): Promise<{
+    success: boolean;
+    found: boolean;
+    details: { name?: string; email?: string; phone?: string } | null;
+  }> {
+    try {
+      const params = new URLSearchParams();
+      if (userId && userId !== 'guest-checkout') params.append('userId', userId);
+      if (email) params.append('email', email);
+      const res = await fetch(`/api/user/checkout-details?${params.toString()}`);
+      if (!res.ok) return { success: false, found: false, details: null };
+      return await res.json();
+    } catch {
+      return { success: false, found: false, details: null };
+    }
+  },
+
+  async createInstamojoPaymentRequest(payload: {
     template_id: string;
     customer_name?: string;
     customer_email?: string;
+    customer_phone?: string;
     user_id?: string;
-  }): Promise<{
-    success: boolean;
-    key_id: string;
-    order_id: string;
-    amount: number;
-    currency: string;
-    product_id: string;
-    product_name: string;
-    internal_order_id?: string;
-    is_test_simulation?: boolean;
-    warning?: string;
-  }> {
-    const res = await fetch('/api/razorpay/create-order', {
+  }): Promise<InstamojoPaymentRequestResponse> {
+    const res = await fetch('/api/instamojo/create-request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json().catch(() => ({ error: 'Failed to create payment order' }));
+    const data = await res.json().catch(() => ({ error: 'Failed to create payment request' }));
     if (!res.ok) {
-      throw new Error(data.error || data.details || 'Failed to initialize payment gateway');
+      throw new Error(data.error || data.details || 'Failed to initialize Instamojo payment');
     }
     return data;
   },
 
-  async verifyRazorpayPayment(payload: {
-    razorpay_order_id: string;
-    razorpay_payment_id: string;
-    razorpay_signature?: string;
+  async simulateInstamojoPayment(payload: {
+    payment_request_id: string;
     template_id: string;
-    user_id?: string;
     customer_name?: string;
     customer_email?: string;
-  }): Promise<{
-    success: boolean;
-    verified: boolean;
-    order: Order;
-    purchase: any;
-    message?: string;
-  }> {
-    const res = await fetch('/api/razorpay/verify-payment', {
+    customer_phone?: string;
+    user_id?: string;
+  }): Promise<InstamojoVerifyResponse> {
+    const res = await fetch('/api/instamojo/simulate-payment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json().catch(() => ({ error: 'Payment verification failed' }));
+    const data = await res.json().catch(() => ({ error: 'Payment simulation failed' }));
     if (!res.ok) {
-      throw new Error(data.error || 'Payment verification failed');
+      throw new Error(data.error || 'Payment simulation failed');
     }
     return data;
   },
@@ -145,6 +150,59 @@ export const api = {
     return data;
   },
 
+  // Customer Authentication (PostgreSQL)
+  async customerSignup(payload: { name?: string; email: string; password: string }): Promise<{ success: boolean; token: string; user: User }> {
+    const res = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({ error: 'Signup failed' }));
+    if (!res.ok) throw new Error(data.error || 'Failed to create account');
+    return data;
+  },
+
+  async customerLogin(payload: { email: string; password: string }): Promise<{ success: boolean; token: string; user: User }> {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({ error: 'Login failed' }));
+    if (!res.ok) throw new Error(data.error || 'Invalid email or password');
+    return data;
+  },
+
+  async getCurrentUser(token?: string): Promise<User | null> {
+    const activeToken = token || localStorage.getItem('onetap_customer_token');
+    if (!activeToken) return null;
+    const res = await fetch('/api/auth/me', {
+      headers: { Authorization: `Bearer ${activeToken}` }
+    });
+    if (!res.ok) {
+      if (res.status === 401) {
+        localStorage.removeItem('onetap_customer_token');
+        localStorage.removeItem('onetap_customer_user');
+      }
+      return null;
+    }
+    const data = await res.json();
+    return data.user || null;
+  },
+
+  async customerLogout(token?: string): Promise<{ success: boolean }> {
+    const activeToken = token || localStorage.getItem('onetap_customer_token');
+    localStorage.removeItem('onetap_customer_token');
+    localStorage.removeItem('onetap_customer_user');
+    if (activeToken) {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${activeToken}` }
+      }).catch(() => {});
+    }
+    return { success: true };
+  },
+
   // Admin Authentication
   async adminLogin(email: string, password: string): Promise<{ success: boolean; token: string; admin: { id: string; email: string } }> {
     const res = await fetch('/api/admin/login', {
@@ -185,19 +243,6 @@ export const api = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Failed to set password' }));
       throw new Error(err.error || 'Failed to set password');
-    }
-    return res.json();
-  },
-
-  async adminFirebaseAuth(email: string, idToken?: string, uid?: string): Promise<{ success: boolean; token: string; admin: { id: string; email: string } }> {
-    const res = await fetch('/api/admin/firebase-auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, idToken, uid })
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Firebase authentication failed' }));
-      throw new Error(err.error || 'Firebase authentication failed');
     }
     return res.json();
   },
@@ -343,63 +388,16 @@ export const api = {
     return data;
   },
 
-  // Admin Settings & Google Sheet Webhooks
+  // Admin Settings
   async adminGetSettings(token: string): Promise<{ 
-    google_sheet_webhook_url: string; 
-    google_sheet_orders_webhook_url: string; 
-    google_sheet_inquiry_webhook_url: string; 
-    env_configured: boolean;
+    database: string;
+    database_connected: boolean;
   }> {
     const res = await fetch('/api/admin/settings', {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) throw new Error('Failed to load settings');
     return res.json();
-  },
-
-  async adminUpdateSettings(
-    token: string, 
-    settings: Partial<AppSettings>
-  ): Promise<{ success: boolean; message?: string }> {
-    const res = await fetch('/api/admin/settings', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}` 
-      },
-      body: JSON.stringify(settings)
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Failed to update settings' }));
-      throw new Error(err.error || 'Failed to update settings');
-    }
-    return res.json();
-  },
-
-  async adminTestSheetWebhook(token: string, webhook_url?: string, type?: 'orders' | 'inquiries'): Promise<{ success: boolean; message: string }> {
-    const res = await fetch('/api/admin/test-sheet-webhook', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}` 
-      },
-      body: JSON.stringify({ webhook_url, type })
-    });
-    const data = await res.json().catch(() => ({ error: 'Connection test failed' }));
-    if (!res.ok) throw new Error(data.error || 'Connection test failed');
-    return data;
-  },
-
-  async adminResyncMessage(token: string, id: string): Promise<{ success: boolean; message: string }> {
-    const res = await fetch(`/api/admin/resync-message/${id}`, {
-      method: 'POST',
-      headers: { 
-        Authorization: `Bearer ${token}` 
-      }
-    });
-    const data = await res.json().catch(() => ({ error: 'Resync failed' }));
-    if (!res.ok) throw new Error(data.error || 'Resync failed');
-    return data;
   },
 
   async adminClearTestData(token: string): Promise<{ success: boolean; message: string }> {

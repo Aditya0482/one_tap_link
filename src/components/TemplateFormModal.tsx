@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { Template, TemplateFAQ, TemplateStatus } from '../types';
 import { api } from '../services/api';
-import { uploadImageToFirebaseStorage } from '../lib/firebase';
+import { ErrorAlert } from './ErrorAlert';
 
 interface TemplateFormModalProps {
   initialTemplate?: Template | null;
@@ -110,28 +110,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
             if (ctx) {
               ctx.drawImage(img, 0, 0, width, height);
               const optimizedBase64 = canvas.toDataURL('image/jpeg', 0.82);
-              
-              // 1. First priority: Try Google Cloud Firebase Storage (Direct CDN URL)
-              try {
-                canvas.toBlob(async (blob) => {
-                  if (blob) {
-                    try {
-                      const cloudUrl = await uploadImageToFirebaseStorage(blob, file.name);
-                      if (cloudUrl) {
-                        return resolve(cloudUrl);
-                      }
-                    } catch (storageErr) {
-                      console.warn('Firebase Storage upload notice, falling back to permanent Base64 in Firestore:', storageErr);
-                    }
-                  }
-                  // 2. Guaranteed Fail-Safe: Store optimized Base64 in Firestore
-                  // Base64 in Firestore is 100% permanent, survives all Railway/container restarts and works across all devices!
-                  resolve(optimizedBase64);
-                }, 'image/jpeg', 0.82);
-                return;
-              } catch (blobErr) {
-                return resolve(optimizedBase64);
-              }
+              resolve(optimizedBase64);
             } else {
               resolve(dataUrl);
             }
@@ -239,11 +218,11 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
       return;
     }
     if (!description.trim()) {
-      setErrorMsg('Please enter a description.');
+      setErrorMsg('Please enter a comprehensive description for this template.');
       return;
     }
     if (!accessUrl.trim()) {
-      setErrorMsg('Please enter the Google Template Access URL.');
+      setErrorMsg('Please provide the template access or Google Drive copy URL.');
       return;
     }
 
@@ -300,7 +279,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
           <div className="flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5 text-[#6D5DFB]" />
             <h2 className="text-lg font-bold text-[#111827]">
-              {isEditing ? 'Edit Template' : 'Add New Google Template'}
+              {isEditing ? 'Edit Template' : 'Add New Digital Template'}
             </h2>
           </div>
           <button
@@ -315,9 +294,11 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
         {/* Scrollable Form Body */}
         <div className="p-6 overflow-y-auto space-y-6 text-sm text-[#111827]">
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs">
-              {errorMsg}
-            </div>
+            <ErrorAlert
+              title="Template Notice"
+              message={errorMsg}
+              onDismiss={() => setErrorMsg('')}
+            />
           )}
 
           {/* Section 1: Basic Information */}
@@ -386,7 +367,7 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                 rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Enter a concise summary of what this Google template helps customers achieve..."
+                placeholder="Enter a concise summary of what this template helps customers achieve..."
                 className="w-full px-3 py-2 rounded-xl border border-[#E2E8F0] text-xs focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC] placeholder:text-[#94A3B8]"
               />
             </div>
@@ -606,14 +587,14 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
             {/* Delivery Access Link */}
             <div className="pt-2">
               <label className="block text-xs font-semibold text-[#111827] mb-1">
-                Google Template Access / Copy URL * (Delivered securely upon paid order)
+                Template Access / Deliverable URL * (Delivered securely upon paid order)
               </label>
               <input
                 type="url"
                 required
                 value={accessUrl}
                 onChange={(e) => setAccessUrl(e.target.value)}
-                placeholder="Enter Google Sheet copy URL (e.g. https://docs.google.com/spreadsheets/d/.../copy)"
+                placeholder="Enter deliverable URL (e.g. Drive folder, GitHub repo, or download link)"
                 className="w-full px-3 py-2 rounded-xl border border-[#E2E8F0] text-xs font-mono focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC] placeholder:text-[#94A3B8]"
               />
               <p className="text-[11px] text-[#64748B] mt-1">

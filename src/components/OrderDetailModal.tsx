@@ -66,7 +66,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
             <div className="flex items-center justify-between pt-1">
               <div>
                 <span className="font-bold text-sm text-[#111827] block">
-                  {order.template_title || 'Google Template'}
+                  {order.template_title || 'Digital Template'}
                 </span>
                 <span className="text-[10px] text-[#64748B] font-mono">
                   ID: {order.template_id}
@@ -137,7 +137,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               </div>
               {order.user_id && (
                 <div>
-                  <span>Firebase User ID:</span>
+                  <span>Customer User ID:</span>
                   <span className="font-mono text-[#64748B] block truncate mt-0.5">
                     {order.user_id}
                   </span>

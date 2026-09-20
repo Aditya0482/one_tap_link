@@ -68,6 +68,7 @@ export interface Order {
   id: string;
   customer_name: string;
   customer_email: string;
+  customer_phone?: string;
   user_id?: string;
   template_id: string;
   template_title?: string;
@@ -77,6 +78,9 @@ export interface Order {
   payment_status: PaymentStatus;
   access_status: AccessStatus;
   payment_reference: string;
+  payment_gateway?: 'instamojo' | 'razorpay' | 'test';
+  instamojo_payment_request_id?: string;
+  instamojo_payment_id?: string;
   razorpay_order_id?: string;
   razorpay_payment_id?: string;
   created_at: string;
@@ -90,16 +94,47 @@ export interface PurchaseRecord {
   customerEmail?: string;
   userEmail?: string;
   customerName?: string;
+  customerPhone?: string;
   productId: string;
   productName: string;
   amount: number;
   currency?: string;
-  razorpayOrderId: string;
-  razorpayPaymentId: string;
+  paymentGateway?: string;
+  instamojoPaymentRequestId?: string;
+  instamojoPaymentId?: string;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
   paymentStatus: string;
   purchasedAt: string;
   accessUrl?: string;
   thumbnailUrl?: string;
+}
+
+export interface InstamojoConfigResponse {
+  is_configured: boolean;
+  sandbox: boolean;
+  mode: string;
+}
+
+export interface InstamojoPaymentRequestResponse {
+  success: boolean;
+  order_id: string;
+  payment_request_id?: string;
+  payment_url?: string;
+  amount: number;
+  currency: string;
+  product_id: string;
+  product_name: string;
+  is_test_simulation?: boolean;
+  warning?: string;
+}
+
+export interface InstamojoVerifyResponse {
+  success: boolean;
+  verified: boolean;
+  order: Order;
+  purchase: PurchaseRecord;
+  message?: string;
 }
 
 export interface RazorpayOrderResponse {
@@ -130,10 +165,13 @@ export interface AdminUser {
 }
 
 export interface User {
-  id?: string;
-  uid?: string;
+  id: string;
+  uid: string;
   email: string;
-  displayName?: string;
+  displayName: string;
+  name?: string;
+  phone?: string;
+  created_at?: string;
 }
 
 export interface AdminDashboardStats {

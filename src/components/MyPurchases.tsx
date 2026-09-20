@@ -16,17 +16,42 @@ import {
   RefreshCw,
   AlertCircle
 } from 'lucide-react';
-import { User as FirebaseUser } from 'firebase/auth';
-import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
-import { firestore } from '../lib/firebase';
 import { api } from '../services/api';
-import { PurchaseRecord, Template } from '../types';
+import { PurchaseRecord, Template, User } from '../types';
+import { ErrorAlert } from './ErrorAlert';
 
 interface MyPurchasesProps {
-  user: FirebaseUser | null;
+  user: User | null;
   onBrowseTemplates: () => void;
   onSelectTemplate: (template: Template) => void;
   onOpenAuth: () => void;
+}
+
+// Strict deduplication function ensuring each unique product / transaction is shown only once
+function deduplicatePurchases(records: PurchaseRecord[]): PurchaseRecord[] {
+  const seenPaymentIds = new Set<string>();
+  const seenOrderIds = new Set<string>();
+  const seenProductIds = new Set<string>();
+  const unique: PurchaseRecord[] = [];
+
+  for (const p of records) {
+    const payId = (p.instamojoPaymentId || p.razorpayPaymentId || '').trim();
+    const ordId = (p.instamojoPaymentRequestId || p.razorpayOrderId || '').trim();
+    const prodId = (p.productId || '').trim();
+
+    // If this payment, order, or product was already registered, skip duplicate card
+    if (payId && seenPaymentIds.has(payId)) continue;
+    if (ordId && seenOrderIds.has(ordId)) continue;
+    if (prodId && seenProductIds.has(prodId)) continue;
+
+    if (payId) seenPaymentIds.add(payId);
+    if (ordId) seenOrderIds.add(ordId);
+    if (prodId) seenProductIds.add(prodId);
+
+    unique.push(p);
+  }
+
+  return unique;
 }
 
 export const MyPurchases: React.FC<MyPurchasesProps> = ({
@@ -35,16 +60,26 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
   onSelectTemplate,
   onOpenAuth
 }) => {
-  // Load initially from local storage cache for instant 0-second display
+  // Load initially from local storage cache, automatically cleaning any legacy duplicates
   const [purchases, setPurchases] = useState<PurchaseRecord[]>(() => {
     try {
       const cached = localStorage.getItem('onetaplink_customer_purchases');
-      return cached ? JSON.parse(cached) : [];
+      if (cached) {
+        const list: PurchaseRecord[] = JSON.parse(cached);
+        const cleanList = deduplicatePurchases(list);
+        if (cleanList.length !== list.length) {
+          localStorage.setItem('onetaplink_customer_purchases', JSON.stringify(cleanList));
+        }
+        return cleanList;
+      }
+      return [];
     } catch {
       return [];
     }
   });
+
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [searchEmail, setSearchEmail] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -52,7 +87,7 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
 
   const fetchUserPurchases = async (emailOverride?: string) => {
     const targetEmail = (emailOverride || user?.email || searchEmail).trim().toLowerCase();
-    const targetUid = user?.uid;
+    const targetUid = user?.uid || user?.id;
 
     if (!targetUid && !targetEmail && purchases.length === 0) {
       return;
@@ -70,7 +105,7 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
         if (cached) {
           const list: PurchaseRecord[] = JSON.parse(cached);
           list.forEach(p => {
-            const key = p.razorpayPaymentId || p.razorpayOrderId || p.id || `${p.productId}_${p.purchasedAt}`;
+            const key = p.productId || p.instamojoPaymentId || p.razorpayPaymentId || p.instamojoPaymentRequestId || p.razorpayOrderId || p.id || 'purchase';
             recordsMap.set(key, p);
           });
         }
@@ -78,115 +113,43 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
         console.warn('Cache read notice:', e);
       }
 
-      // 2. Fetch from Backend Server Database (Instant response)
-      const backendPromise = api.getUserPurchases(targetUid || 'guest-checkout', targetEmail || undefined)
-        .then((res) => {
-          if (res.success && res.purchases) {
-            res.purchases.forEach((order) => {
-              const key = order.id || order.razorpay_payment_id || order.payment_reference || order.razorpay_order_id || `${order.template_id}_${order.created_at}`;
-              recordsMap.set(key, {
-                id: order.id,
-                userId: order.user_id || targetUid || 'guest-checkout',
-                productId: order.template_id,
-                productName: order.template_title || 'Google Template',
-                amount: order.amount,
-                razorpayOrderId: order.razorpay_order_id || order.payment_reference,
-                razorpayPaymentId: order.razorpay_payment_id || order.payment_reference,
-                paymentStatus: 'paid',
-                purchasedAt: order.created_at,
-                accessUrl: order.access_url,
-                thumbnailUrl: order.template_thumbnail
-              });
+      // 2. Fetch directly from Backend Database (PostgreSQL)
+      try {
+        const res = await api.getUserPurchases(targetUid || 'guest-checkout', targetEmail || undefined);
+        if (res.success && res.purchases) {
+          res.purchases.forEach((order) => {
+            const payId = order.instamojo_payment_id || order.razorpay_payment_id || order.payment_reference;
+            const ordId = order.instamojo_payment_request_id || order.razorpay_order_id || order.id;
+            const key = order.template_id || payId || ordId || order.id;
+
+            recordsMap.set(key, {
+              id: order.id,
+              userId: order.user_id || targetUid || 'guest-checkout',
+              productId: order.template_id,
+              productName: order.template_title || 'Digital Template',
+              amount: order.amount,
+              currency: order.currency,
+              paymentGateway: order.payment_gateway,
+              instamojoPaymentRequestId: order.instamojo_payment_request_id,
+              instamojoPaymentId: order.instamojo_payment_id,
+              razorpayOrderId: order.razorpay_order_id || order.payment_reference,
+              razorpayPaymentId: order.razorpay_payment_id || order.payment_reference,
+              paymentStatus: 'paid',
+              purchasedAt: order.created_at,
+              accessUrl: order.access_url,
+              thumbnailUrl: order.template_thumbnail
             });
-          }
-        })
-        .catch((err) => console.warn('Backend order lookup notice:', err));
-
-      // 3. Cloud Firestore lookup across all devices (UID and email queries)
-      const firestorePurchasesPromise = (async () => {
-        try {
-          const purchasesRef = collection(firestore, 'purchases');
-          const queries: any[] = [];
-
-          if (targetUid) {
-            queries.push(query(purchasesRef, where('userId', '==', targetUid)));
-          }
-          if (targetEmail) {
-            queries.push(query(purchasesRef, where('customerEmail', '==', targetEmail)));
-            queries.push(query(purchasesRef, where('userEmail', '==', targetEmail)));
-          }
-
-          const snapshots = await Promise.all(queries.map(q => getDocs(q).catch(() => null)));
-          snapshots.forEach(snapshot => {
-            if (snapshot) {
-              snapshot.forEach((docSnap) => {
-                const data = docSnap.data() as PurchaseRecord;
-                const key = docSnap.id || data.razorpayPaymentId || data.razorpayOrderId || `${data.productId}_${data.purchasedAt}`;
-                recordsMap.set(key, {
-                  ...data,
-                  id: docSnap.id
-                });
-
-                // Auto-link purchase to current authenticated user UID if it was previously guest
-                if (targetUid && (!data.userId || data.userId === 'guest-checkout') && targetEmail && 
-                   (data.customerEmail?.toLowerCase() === targetEmail || data.userEmail?.toLowerCase() === targetEmail)) {
-                  setDoc(doc(firestore, 'purchases', docSnap.id), { userId: targetUid }, { merge: true }).catch(() => {});
-                }
-              });
-            }
           });
-        } catch (fsErr) {
-          console.warn('Firestore purchases lookup notice:', fsErr);
         }
-      })();
+      } catch (backendErr) {
+        console.warn('Backend order lookup notice:', backendErr);
+      }
 
-      // 4. Also check Firestore orders collection for complete coverage
-      const firestoreOrdersPromise = (async () => {
-        if (!targetEmail && !targetUid) return;
-        try {
-          const ordersRef = collection(firestore, 'orders');
-          const orderQueries: any[] = [];
-          if (targetUid) {
-            orderQueries.push(query(ordersRef, where('userId', '==', targetUid)));
-          }
-          if (targetEmail) {
-            orderQueries.push(query(ordersRef, where('customer_email', '==', targetEmail)));
-          }
+      // 3. Clean deduplication
+      const allRecords = Array.from(recordsMap.values());
+      const cleanList = deduplicatePurchases(allRecords);
 
-          const snapshots = await Promise.all(orderQueries.map(q => getDocs(q).catch(() => null)));
-          snapshots.forEach(snapshot => {
-            if (snapshot) {
-              snapshot.forEach(docSnap => {
-                const o = docSnap.data() as any;
-                if (o.payment_status === 'Paid' || o.payment_status === 'paid') {
-                  const key = o.razorpay_payment_id || o.payment_reference || o.razorpay_order_id || o.id;
-                  if (key && !recordsMap.has(key)) {
-                    recordsMap.set(key, {
-                      id: o.id || key,
-                      userId: o.userId || o.user_id || targetUid || 'guest-checkout',
-                      productId: o.template_id || '',
-                      productName: o.template_title || 'Google Template',
-                      amount: o.amount || 0,
-                      razorpayOrderId: o.razorpay_order_id || o.payment_reference,
-                      razorpayPaymentId: o.razorpay_payment_id || o.payment_reference || key,
-                      paymentStatus: 'paid',
-                      purchasedAt: o.created_at || new Date().toISOString(),
-                      accessUrl: o.access_url,
-                      thumbnailUrl: o.template_thumbnail
-                    });
-                  }
-                }
-              });
-            }
-          });
-        } catch (e) {
-          console.warn('Firestore orders lookup notice:', e);
-        }
-      })();
-
-      await Promise.allSettled([backendPromise, firestorePurchasesPromise, firestoreOrdersPromise]);
-
-      const sorted = Array.from(recordsMap.values()).sort((a, b) => {
+      const sorted = cleanList.sort((a, b) => {
         return new Date(b.purchasedAt).getTime() - new Date(a.purchasedAt).getTime();
       });
 
@@ -198,10 +161,29 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
       }
     } catch (err: any) {
       console.error('Failed to load purchases:', err);
-      setError('Could not refresh purchases. Showing recent saved records.');
+      setError('Unable to refresh your purchase library from the server. Showing your locally saved purchases.');
     } finally {
       setLoading(false);
       setIsSearching(false);
+    }
+  };
+
+  // Manual refresh with guaranteed 2-second spinning animation requested by user
+  const handleManualRefresh = async () => {
+    if (isRefreshing || loading) return;
+    setIsRefreshing(true);
+    const minDelay = new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      await Promise.all([
+        fetchUserPurchases(),
+        minDelay
+      ]);
+      setFeedback({ type: 'success', message: 'Purchases updated successfully.' });
+      setTimeout(() => setFeedback(null), 3000);
+    } catch {
+      // errors handled inside fetchUserPurchases
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -235,8 +217,8 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
           <form onSubmit={handleEmailSearch} className="mt-6">
             <div className="flex items-center gap-2">
               <input
-                type="email"
-                placeholder="Enter your checkout email..."
+                type="text"
+                placeholder="Enter email, Order ID, or Payment ID..."
                 value={searchEmail}
                 onChange={(e) => setSearchEmail(e.target.value)}
                 className="flex-1 px-4 py-2.5 rounded-xl border border-[#CBD5E1] text-sm focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] bg-white"
@@ -261,7 +243,7 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
             onClick={onOpenAuth}
             className="mt-2 w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold bg-white border border-[#CBD5E1] hover:border-[#6D5DFB] text-[#111827] shadow-2xs cursor-pointer transition-all active:scale-95"
           >
-            <span>Sign In with Google</span>
+            <span>Sign In to Your Account</span>
             <ArrowRight className="w-4 h-4 text-[#6D5DFB]" />
           </button>
         </div>
@@ -294,12 +276,13 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={() => fetchUserPurchases()}
-              disabled={loading}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-[#64748B] bg-white border border-[#E2E8F0] hover:text-[#111827] hover:border-[#6D5DFB]/40 transition-colors cursor-pointer disabled:opacity-60"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing || loading}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-[#64748B] bg-white border border-[#E2E8F0] hover:text-[#111827] hover:border-[#6D5DFB]/40 transition-colors cursor-pointer disabled:opacity-60 active:scale-95"
+              title="Refresh purchases"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${(isRefreshing || loading) ? 'animate-spin text-[#6D5DFB]' : ''}`} />
+              <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
             </button>
 
             <button
@@ -315,38 +298,45 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
 
         {/* Feedback Alert */}
         {feedback && (
-          <div className={`mt-4 p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-3 shadow-2xs ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border-rose-200'
-          }`}>
-            <span>{feedback.message}</span>
-            <button 
-              type="button" 
-              onClick={() => setFeedback(null)} 
-              className="text-xs opacity-60 hover:opacity-100 cursor-pointer px-1"
-            >
-              ✕
-            </button>
-          </div>
+          feedback.type === 'error' ? (
+            <div className="mt-4">
+              <ErrorAlert
+                title="Purchase Notice"
+                message={feedback.message}
+                onDismiss={() => setFeedback(null)}
+              />
+            </div>
+          ) : (
+            <div className="mt-4 p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50/90 to-teal-50/80 border border-emerald-200/80 text-emerald-800 text-xs font-semibold flex items-center justify-between gap-3 shadow-2xs animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{feedback.message}</span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setFeedback(null)} 
+                className="text-xs opacity-60 hover:opacity-100 cursor-pointer px-1"
+              >
+                ✕
+              </button>
+            </div>
+          )
         )}
 
         {/* Content */}
-        {loading ? (
+        {loading && !isRefreshing ? (
           <div className="py-24 text-center">
             <Loader2 className="w-8 h-8 animate-spin text-[#6D5DFB] mx-auto mb-3" />
             <p className="text-sm font-medium text-[#64748B]">Loading your purchases...</p>
           </div>
         ) : error ? (
-          <div className="py-16 text-center max-w-md mx-auto">
-            <p className="text-sm text-rose-600 font-medium mb-4">{error}</p>
-            <button
-              type="button"
-              onClick={() => fetchUserPurchases()}
-              className="px-4 py-2 bg-[#6D5DFB] text-white text-xs font-bold rounded-xl"
-            >
-              Retry
-            </button>
+          <div className="py-12 max-w-md mx-auto">
+            <ErrorAlert
+              title="Connection Notice"
+              message={error}
+              onRetry={() => fetchUserPurchases()}
+              retryLabel="Retry Loading"
+            />
           </div>
         ) : purchases.length === 0 ? (
           <div className="py-20 text-center max-w-md mx-auto bg-white rounded-2xl border border-[#E2E8F0] p-8 mt-8 shadow-2xs">
@@ -355,14 +345,14 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
             </div>
             <h3 className="text-lg font-bold text-[#111827]">No purchases found</h3>
             <p className="text-xs text-[#64748B] mt-1.5 leading-relaxed">
-              When you buy a template via Razorpay, it will be automatically linked to your account and unlocked here forever.
+              When you buy a template, it will be automatically linked to your account and unlocked here forever.
             </p>
             <button
               type="button"
               onClick={onBrowseTemplates}
               className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white transition-all shadow-xs cursor-pointer active:scale-95"
             >
-              <span>Browse Google Templates</span>
+              <span>Browse All Templates</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -374,7 +364,7 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {purchases.map((purchase) => {
-                const pKey = purchase.id || purchase.razorpayPaymentId || purchase.razorpayOrderId || `${purchase.productId}-${purchase.purchasedAt}`;
+                const pKey = purchase.productId || purchase.id || purchase.razorpayPaymentId || purchase.razorpayOrderId;
                 const dateStr = purchase.purchasedAt 
                   ? new Date(purchase.purchasedAt).toLocaleDateString('en-US', {
                       year: 'numeric',
@@ -426,7 +416,7 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
                             </span>
                             <span>•</span>
                             <span className="font-mono text-[10px] text-[#94A3B8] truncate">
-                              {purchase.razorpayPaymentId || purchase.razorpayOrderId}
+                              {purchase.instamojoPaymentId || purchase.razorpayPaymentId || purchase.instamojoPaymentRequestId || purchase.razorpayOrderId || 'Verified'}
                             </span>
                           </div>
                         </div>
@@ -437,7 +427,7 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
                     <div className="mt-5 pt-4 border-t border-[#F1F5F9] flex items-center justify-between gap-3">
                       <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#22C55E]">
                         <Zap className="w-3.5 h-3.5 fill-[#22C55E]" />
-                        <span>Instant Copy Ready</span>
+                        <span>Instant Access Ready</span>
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -448,7 +438,7 @@ export const MyPurchases: React.FC<MyPurchasesProps> = ({
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white shadow-xs transition-all active:scale-95 cursor-pointer"
                           >
-                            <span>Open in Google Drive</span>
+                            <span>{purchase.accessUrl?.includes('docs.google.com') ? 'Open in Google Drive' : 'Access Template'}</span>
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
                         ) : (

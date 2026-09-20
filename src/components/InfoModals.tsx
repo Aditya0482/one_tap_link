@@ -33,16 +33,16 @@ export const InfoModal: React.FC<InfoModalProps> = ({ type, onClose, onNavigateT
               <h3 className="text-base font-bold text-[#111827]">About OneTapLink</h3>
             </div>
             <p className="text-xs text-[#64748B] leading-relaxed">
-              OneTapLink builds plug-and-play, automated Google Sheets and Workspace digital templates designed for high-performance individuals, entrepreneurs, and busy professionals.
+              OneTapLink builds plug-and-play digital templates, full-stack website codebases, and automated tools designed for high-performance individuals, entrepreneurs, and busy professionals.
             </p>
             <p className="text-xs text-[#64748B] leading-relaxed">
-              Every template is meticulously engineered with automated formulas, visual dashboards, and intuitive layouts so you can jump straight into tracking and executing without building spreadsheets from scratch.
+              Every template is meticulously engineered with clean design, intuitive layouts, and robust functionality so you can jump straight into execution without starting from scratch.
             </p>
             <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-2 text-xs">
-              <div className="font-bold text-[#111827]">Why Choose Our Google Templates:</div>
+              <div className="font-bold text-[#111827]">Why Choose Our Digital Templates:</div>
               <div className="flex items-center gap-2 text-[#64748B]">
                 <CheckCircle2 className="w-3.5 h-3.5 text-[#22C55E]" />
-                <span>One-click copy directly into your personal Google Drive</span>
+                <span>Instant access and direct delivery for all templates and assets</span>
               </div>
               <div className="flex items-center gap-2 text-[#64748B]">
                 <CheckCircle2 className="w-3.5 h-3.5 text-[#22C55E]" />

@@ -12,10 +12,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { OneTapLogo } from './OneTapLogo';
-import { 
-  auth, 
-  signInWithEmailAndPassword 
-} from '../lib/firebase';
+import { ErrorAlert } from './ErrorAlert';
 
 interface AdminLoginProps {
   onLoginSuccess: (token: string, admin: { id: string; email: string }) => void;
@@ -33,7 +30,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [successNotice, setSuccessNotice] = useState('');
 
-  // Handle Admin Login (Authenticates with Firebase Auth, with server fallback)
+  // Handle Admin Login (Authenticates with PostgreSQL backed server)
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -43,27 +40,14 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
     const cleanPassword = password.trim();
 
     if (!cleanEmail || !cleanPassword) {
-      setErrorMsg('Please enter both your email and password.');
+      setErrorMsg('Please enter both your administrator email and password.');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      let res;
-
-      // 1. Try client Firebase Authentication first
-      try {
-        const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-        const firebaseUid = userCredential.user.uid;
-        const userEmail = userCredential.user.email || cleanEmail;
-        const idToken = await userCredential.user.getIdToken();
-        res = await api.adminFirebaseAuth(userEmail, idToken, firebaseUid);
-      } catch (fbErr: any) {
-        console.warn('Client-side Firebase auth attempt fallback:', fbErr?.code || fbErr?.message);
-        // Fallback to server verification (direct Firebase REST API on server)
-        res = await api.adminLogin(cleanEmail, cleanPassword);
-      }
+      const res = await api.adminLogin(cleanEmail, cleanPassword);
 
       if (res && res.success && res.token) {
         onLoginSuccess(res.token, res.admin);
@@ -72,7 +56,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
       }
     } catch (err: any) {
       console.error('Admin login error:', err);
-      const message = err?.message || 'Invalid email or password. Access denied.';
+      const message = err?.message || 'Invalid administrator credentials. Access denied.';
       setErrorMsg(message);
     } finally {
       setIsLoading(false);
@@ -107,10 +91,12 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-6 sm:px-10 rounded-2xl border border-[#E2E8F0] shadow-sm">
           {errorMsg && (
-            <div className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
+            <ErrorAlert
+              title="Access Denied"
+              message={errorMsg}
+              onDismiss={() => setErrorMsg('')}
+              className="mb-5"
+            />
           )}
 
           {successNotice && (

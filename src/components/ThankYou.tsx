@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { 
   CheckCircle2, 
   ExternalLink, 
@@ -7,14 +7,12 @@ import {
   FileSpreadsheet, 
   HelpCircle, 
   Sparkles, 
-  ShieldCheck,
-  FolderSync,
-  Printer,
-  MailCheck,
-  FileText,
-  X,
-  Clock,
-  Check
+  ShieldCheck, 
+  FolderSync, 
+  Printer, 
+  MailCheck, 
+  Clock, 
+  Check 
 } from 'lucide-react';
 import { Order } from '../types';
 import { OneTapLogo } from './OneTapLogo';
@@ -30,10 +28,8 @@ export const ThankYou: React.FC<ThankYouProps> = ({
   onBackToStore,
   onOpenPurchases
 }) => {
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
-
   const accessUrl = order.access_url || 'https://docs.google.com/spreadsheets/u/0/';
-  const paymentRef = order.razorpay_payment_id || order.payment_reference || 'N/A';
+  const paymentRef = order.instamojo_payment_id || order.razorpay_payment_id || order.payment_reference || 'N/A';
   
   // Format payment date
   const orderDate = order.created_at ? new Date(order.created_at) : new Date();
@@ -89,23 +85,14 @@ export const ThankYou: React.FC<ThankYouProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center w-full sm:w-auto">
               <button
                 type="button"
                 onClick={handlePrint}
-                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white shadow-xs transition-all active:scale-95 cursor-pointer"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white shadow-xs transition-all active:scale-95 cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
-                <span>Print</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowReceiptModal(true)}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-[#6D5DFB] bg-white hover:bg-[#F8FAFC] border border-[#6D5DFB]/30 transition-all cursor-pointer"
-              >
-                <FileText className="w-4 h-4" />
-                <span>View</span>
+                <span>Print Receipt</span>
               </button>
             </div>
           </div>
@@ -136,7 +123,7 @@ export const ThankYou: React.FC<ThankYouProps> = ({
               <div>
                 <span className="text-[#64748B] block">Purchased Template</span>
                 <span className="font-bold text-[#111827] block">
-                  {order.template_title || 'Google Template'}
+                  {order.template_title || 'Digital Template'}
                 </span>
               </div>
               <div>
@@ -146,7 +133,7 @@ export const ThankYou: React.FC<ThankYouProps> = ({
                 </span>
               </div>
               <div className="sm:col-span-2 pt-2 border-t border-[#E2E8F0]">
-                <span className="text-[#64748B] block">Razorpay Payment ID</span>
+                <span className="text-[#64748B] block">Payment Reference ID</span>
                 <span className="font-mono text-[11px] font-semibold text-[#6D5DFB] truncate block">
                   {paymentRef}
                 </span>
@@ -156,7 +143,7 @@ export const ThankYou: React.FC<ThankYouProps> = ({
             <div className="mt-3 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200/60 flex items-start gap-2.5 text-left text-xs text-emerald-800">
               <MailCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold">Email Receipt Delivered:</span> An official invoice & payment confirmation has also been dispatched by Razorpay directly to your email ({order.customer_email}).
+                <span className="font-bold">Email Receipt Delivered:</span> An official invoice & payment confirmation has also been dispatched directly to your email ({order.customer_email}).
               </div>
             </div>
           </div>
@@ -250,73 +237,6 @@ export const ThankYou: React.FC<ThankYouProps> = ({
         </div>
 
       </div>
-
-      {/* ========================================================================= */}
-      {/* 3. RECEIPT PREVIEW MODAL (Allows inspection on screen before printing)    */}
-      {/* ========================================================================= */}
-      {showReceiptModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto print:hidden">
-          <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-[#CBD5E1] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
-            {/* Modal Header Bar */}
-            <div className="bg-[#0F172A] text-white px-5 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-[#38BDF8]" />
-                <span className="font-bold text-sm sm:text-base">Payment Receipt Preview</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white transition-all shadow-xs cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Print / Save PDF</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowReceiptModal(false)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-                  aria-label="Close Preview"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Scrollable Receipt Content */}
-            <div className="p-4 sm:p-6 max-h-[75vh] overflow-y-auto bg-slate-50">
-              <div className="bg-white border-2 border-slate-900 rounded-xl p-5 sm:p-8 shadow-sm">
-                <PrintableReceiptContent
-                  order={order}
-                  accessUrl={accessUrl}
-                  paymentRef={paymentRef}
-                  formattedDate={formattedDate}
-                  formattedTime={formattedTime}
-                />
-              </div>
-            </div>
-
-            {/* Modal Bottom Actions */}
-            <div className="bg-white border-t border-slate-200 px-5 py-3 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowReceiptModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white shadow-xs transition-all cursor-pointer"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Print</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -403,7 +323,9 @@ const PrintableReceiptContent: React.FC<PrintableReceiptContentProps> = ({
             </div>
             <div>
               <span className="text-slate-500">Payment Gateway: </span>
-              <span className="font-semibold text-slate-900">Razorpay (Verified)</span>
+              <span className="font-semibold text-slate-900">
+                {order.instamojo_payment_id ? 'Instamojo (Verified)' : (order.razorpay_payment_id ? 'Razorpay (Verified)' : 'Online Payment (Verified)')}
+              </span>
             </div>
             <div>
               <span className="text-slate-500">Payment ID: </span>
@@ -430,10 +352,10 @@ const PrintableReceiptContent: React.FC<PrintableReceiptContentProps> = ({
               <td className="py-3 px-3 text-center border-r border-slate-900 font-mono text-slate-500">1</td>
               <td className="py-3 px-3 border-r border-slate-900 font-medium">
                 <div className="font-bold text-slate-950 text-xs sm:text-sm">
-                  {order.template_title || 'Google Workspace Template'}
+                  {order.template_title || 'Digital Template'}
                 </div>
                 <div className="text-[10px] text-slate-500 mt-0.5">
-                  Automated formulas, clean layout & Google Drive 1-click copy
+                  Clean layout, instant copy & complete template access
                 </div>
               </td>
               <td className="py-3 px-3 text-center border-r border-slate-900 text-[11px] text-slate-600">
@@ -476,17 +398,17 @@ const PrintableReceiptContent: React.FC<PrintableReceiptContentProps> = ({
         </table>
       </div>
 
-      {/* 4. Google Drive Access Link Information (Avoid page break) */}
+      {/* 4. Template Access Link Information (Avoid page break) */}
       <div className="receipt-avoid-break p-3.5 rounded-lg border border-slate-300 bg-slate-50 space-y-1">
         <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
           <FolderSync className="w-3.5 h-3.5 text-[#6D5DFB]" />
-          <span>Your Google Drive Template Access Link:</span>
+          <span>Your Instant Template Access Link:</span>
         </div>
         <div className="font-mono text-[10px] text-slate-800 break-all bg-white p-2 rounded border border-slate-200">
           {accessUrl}
         </div>
         <p className="text-[10px] text-slate-500 italic">
-          Keep this link safe. You can access and copy this template into your Google Drive anytime.
+          Keep this link safe. You can access and copy your template anytime.
         </p>
       </div>
 
@@ -502,7 +424,7 @@ const PrintableReceiptContent: React.FC<PrintableReceiptContentProps> = ({
           <div className="font-bold text-slate-800 uppercase tracking-wider">
             Verified Computer-Generated Receipt
           </div>
-          <div>Authorized via Razorpay Payment Gateway</div>
+          <div>Authorized Online Payment Gateway Transaction</div>
           <div className="text-slate-400 mt-0.5">onetaplink.site • support@onetaplink.site</div>
         </div>
       </div>

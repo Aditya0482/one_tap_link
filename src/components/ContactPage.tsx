@@ -6,11 +6,11 @@ import {
   CheckCircle2, 
   Send, 
   HelpCircle, 
-  FileSpreadsheet,
   AlertCircle,
   Loader2
 } from 'lucide-react';
 import { api } from '../services/api';
+import { ErrorAlert } from './ErrorAlert';
 
 interface ContactPageProps {
   onNavigate: (view: any) => void;
@@ -28,7 +28,6 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [syncedToSheet, setSyncedToSheet] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Field validation states (subtle inline red labels only, no attention banners)
@@ -68,7 +67,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
     setIsSubmitting(true);
 
     try {
-      const res = await api.submitContact({
+      await api.submitContact({
         name: formData.name,
         email: formData.email,
         category: formData.category,
@@ -77,7 +76,6 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
         message: formData.message
       });
 
-      setSyncedToSheet(res.synced_to_sheet);
       setSubmitted(true);
     } catch (err: any) {
       console.error('Contact submission error:', err);
@@ -152,7 +150,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
                 {/* Instant Digital Delivery */}
                 <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-start gap-3.5">
                   <div className="w-9 h-9 rounded-lg bg-[#22C55E]/10 text-[#22C55E] flex items-center justify-center shrink-0">
-                    <FileSpreadsheet className="w-4 h-4" />
+                    <ShieldCheck className="w-4 h-4" />
                   </div>
                   <div>
                     <span className="font-bold text-[#111827] block text-xs">Template Access Support</span>
@@ -205,17 +203,10 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
                     Message Received!
                   </h3>
                   
-                  {syncedToSheet ? (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#22C55E]/10 border border-[#22C55E]/20 text-[#15803D] text-xs font-bold">
-                      <FileSpreadsheet className="w-3.5 h-3.5" />
-                      <span>Synced to Google Sheets</span>
-                    </div>
-                  ) : (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#6D5DFB]/10 border border-[#6D5DFB]/20 text-[#6D5DFB] text-xs font-bold">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>Logged in Support Queue</span>
-                    </div>
-                  )}
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#22C55E]/10 border border-[#22C55E]/20 text-[#15803D] text-xs font-bold">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Logged in Support Queue</span>
+                  </div>
 
                   <p className="text-xs sm:text-sm text-[#64748B] max-w-md mx-auto leading-relaxed">
                     Thank you for reaching out! We have received your message regarding <strong className="text-[#111827]">{formData.category}</strong>. Our team will review your inquiry and reply to <strong className="text-[#111827]">{formData.email}</strong> within 24 hours.
@@ -243,9 +234,11 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
                     </div>
 
                     {submitError && (
-                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
-                        {submitError}
-                      </div>
+                      <ErrorAlert
+                        title="Submission Notice"
+                        message={submitError}
+                        onDismiss={() => setSubmitError(null)}
+                      />
                     )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">

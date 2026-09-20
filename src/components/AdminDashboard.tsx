@@ -13,16 +13,12 @@ import {
   ExternalLink, 
   LogOut, 
   ArrowLeft,
-  FileSpreadsheet,
   TrendingUp,
   Search,
   Filter,
   RefreshCw,
   Loader2,
   Table,
-  Copy,
-  Check,
-  UploadCloud,
   Package,
   AlertTriangle
 } from 'lucide-react';
@@ -39,120 +35,7 @@ import {
 import { api } from '../services/api';
 import { TemplateFormModal } from './TemplateFormModal';
 import { OrderDetailModal } from './OrderDetailModal';
-import { firestore, sanitizeForFirestore } from '../lib/firebase';
-import { collection, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
-
-const ORDERS_APPS_SCRIPT_CODE = `function doPost(e) {
-  try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    var data = {};
-    if (e && e.postData && e.postData.contents) {
-      try {
-        data = JSON.parse(e.postData.contents);
-      } catch (err) {
-        data = e.parameter || {};
-      }
-    } else if (e && e.parameter) {
-      data = e.parameter;
-    }
-
-    // Auto-create headers if sheet is empty
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow([
-        "Order ID", 
-        "Date & Time", 
-        "Customer Name", 
-        "Customer Email", 
-        "Template Name", 
-        "Amount (₹)", 
-        "Payment ID", 
-        "Order Reference", 
-        "Status"
-      ]);
-      sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#EDE9FE").setFontColor("#5B21B6");
-      sheet.setFrozenRows(1);
-    }
-
-    // Append new order row
-    sheet.appendRow([
-      data.order_id || "",
-      data.timestamp || new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
-      data.customer_name || "",
-      data.customer_email || "",
-      data.product_name || data.template_title || "",
-      data.amount !== undefined ? data.amount : "",
-      data.payment_id || "",
-      data.order_ref || "",
-      data.status || "paid"
-    ]);
-
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Order recorded successfully" }))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-function doGet(e) {
-  return ContentService.createTextOutput(JSON.stringify({ status: "active", message: "Orders Webhook is live" }))
-    .setMimeType(ContentService.MimeType.JSON);
-}`;
-
-const INQUIRIES_APPS_SCRIPT_CODE = `function doPost(e) {
-  try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    var data = {};
-    if (e && e.postData && e.postData.contents) {
-      try {
-        data = JSON.parse(e.postData.contents);
-      } catch (err) {
-        data = e.parameter || {};
-      }
-    } else if (e && e.parameter) {
-      data = e.parameter;
-    }
-
-    // Auto-create headers if sheet is empty
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow([
-        "Ticket ID", 
-        "Date & Time", 
-        "Name", 
-        "Email", 
-        "Category", 
-        "Order ID", 
-        "Subject", 
-        "Message"
-      ]);
-      sheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#E0F2FE").setFontColor("#0369A1");
-      sheet.setFrozenRows(1);
-    }
-
-    // Append new inquiry row
-    sheet.appendRow([
-      data.ticket_id || "",
-      data.timestamp || new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
-      data.name || "",
-      data.email || "",
-      data.category || "",
-      data.order_id || "N/A",
-      data.subject || "",
-      data.message || ""
-    ]);
-
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Inquiry recorded successfully" }))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-function doGet(e) {
-  return ContentService.createTextOutput(JSON.stringify({ status: "active", message: "Inquiries Webhook is live" }))
-    .setMimeType(ContentService.MimeType.JSON);
-}`;
+import { ErrorAlert } from './ErrorAlert';
 
 interface AdminDashboardProps {
   token: string;
@@ -167,31 +50,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onLogout,
   onBackToStore
 }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'templates' | 'orders' | 'messages'>('dashboard');
+  const [activeTab, setActiveTabState] = useState<'dashboard' | 'templates' | 'orders' | 'messages'>(() => {
+    try {
+      const saved = localStorage.getItem('onetap_admin_active_tab');
+      if (saved === 'templates' || saved === 'orders' || saved === 'messages' || saved === 'dashboard') {
+        return saved;
+      }
+    } catch {}
+    return 'dashboard';
+  });
+
+  const setActiveTab = (tab: 'dashboard' | 'templates' | 'orders' | 'messages') => {
+    setActiveTabState(tab);
+    try {
+      localStorage.setItem('onetap_admin_active_tab', tab);
+    } catch {}
+  };
   const [stats, setStats] = useState<AdminDashboardStats | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [messages, setMessages] = useState<ContactMessage[]>([]);
-  const [settings, setSettings] = useState<{ 
-    google_sheet_webhook_url: string; 
-    google_sheet_orders_webhook_url?: string;
-    google_sheet_inquiry_webhook_url?: string;
-    env_configured: boolean;
-  }>({
-    google_sheet_webhook_url: '',
-    google_sheet_orders_webhook_url: '',
-    google_sheet_inquiry_webhook_url: '',
-    env_configured: false
-  });
-  const [ordersWebhookInput, setOrdersWebhookInput] = useState('');
-  const [inquiryWebhookInput, setInquiryWebhookInput] = useState('');
-  const [isSavingOrders, setIsSavingOrders] = useState(false);
-  const [isSavingInquiry, setIsSavingInquiry] = useState(false);
-  const [isTestingOrders, setIsTestingOrders] = useState(false);
-  const [isTestingInquiry, setIsTestingInquiry] = useState(false);
-  const [ordersFeedback, setOrdersFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [inquiryFeedback, setInquiryFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [copiedCodeType, setCopiedCodeType] = useState<'orders' | 'inquiries' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -204,8 +82,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [resyncingMessageId, setResyncingMessageId] = useState<string | null>(null);
-  const [resyncFeedback, setResyncFeedback] = useState<{ id: string; success: boolean; message: string } | null>(null);
   const [isClearingData, setIsClearingData] = useState(false);
   const [confirmDeleteOrderId, setConfirmDeleteOrderId] = useState<string | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
@@ -216,189 +92,70 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
   const [confirmClearData, setConfirmClearData] = useState(false);
 
-  const loadData = async () => {
+  const loadData = async (keepSpinning = false) => {
     try {
-      setIsRefreshing(true);
-      const [fetchedStats, fetchedTemplates, fetchedOrders, fetchedMessages, fetchedSettings] = await Promise.all([
+      if (!keepSpinning) setIsRefreshing(true);
+      const [fetchedStats, fetchedTemplates, fetchedOrders, fetchedMessages] = await Promise.all([
         api.adminGetStats(token),
         api.adminGetTemplates(token),
         api.adminGetOrders(token),
-        api.adminGetMessages(token).catch(() => []),
-        api.adminGetSettings(token).catch(() => ({ 
-          google_sheet_webhook_url: '', 
-          google_sheet_orders_webhook_url: '', 
-          google_sheet_inquiry_webhook_url: '', 
-          env_configured: false
-        }))
+        api.adminGetMessages(token).catch(() => [])
       ]);
 
-      // Strict deduplication map: deduplicate by ID, Slug, and Title
+      // Deduplicate templates by ID and Slug
       const templateMap = new Map<string, Template>();
-      const slugMap = new Map<string, string>(); // slug -> id
-      const titleMap = new Map<string, string>(); // title -> id
-      const duplicateFirestoreIdsToDelete: string[] = [];
-
-      // 1. Process server templates first
+      const slugMap = new Map<string, string>();
       fetchedTemplates.forEach(t => {
         if (!t || !t.id) return;
         const normalizedSlug = (t.slug || '').trim().toLowerCase();
-        const normalizedTitle = (t.title || '').trim().toLowerCase();
-        if ((normalizedSlug && slugMap.has(normalizedSlug)) || (normalizedTitle && titleMap.has(normalizedTitle))) {
+        if (normalizedSlug && slugMap.has(normalizedSlug)) {
           return;
         }
         templateMap.set(t.id, t);
         if (normalizedSlug) slugMap.set(normalizedSlug, t.id);
-        if (normalizedTitle) titleMap.set(normalizedTitle, t.id);
       });
 
-      // 2. Load templates from Firestore and merge
-      try {
-        const firestoreSnap = await getDocs(collection(firestore, 'templates'));
-        const firestoreTemplates: Template[] = [];
-        firestoreSnap.forEach((d) => {
-          firestoreTemplates.push({ id: d.id, ...d.data() } as Template);
-        });
-
-        firestoreTemplates.forEach(ft => {
-          if (!ft || !ft.id) return;
-          const normalizedSlug = (ft.slug || '').trim().toLowerCase();
-          const normalizedTitle = (ft.title || '').trim().toLowerCase();
-
-          if (templateMap.has(ft.id)) {
-            return;
-          }
-          if ((normalizedSlug && slugMap.has(normalizedSlug)) || (normalizedTitle && titleMap.has(normalizedTitle))) {
-            // This is an orphaned cloud duplicate from the previous bug, mark for cleanup
-            duplicateFirestoreIdsToDelete.push(ft.id);
-            return;
-          }
-
-          templateMap.set(ft.id, ft);
-          if (normalizedSlug) slugMap.set(normalizedSlug, ft.id);
-          if (normalizedTitle) titleMap.set(normalizedTitle, ft.id);
-        });
-
-        // 3. Clean up any redundant duplicate Firestore docs silently in background
-        if (duplicateFirestoreIdsToDelete.length > 0) {
-          await Promise.all(
-            duplicateFirestoreIdsToDelete.map(dupId => 
-              deleteDoc(doc(firestore, 'templates', dupId)).catch(() => {})
-            )
-          );
-        }
-      } catch (fsErr) {
-        console.warn('Firestore admin templates sync notice:', fsErr);
-      }
-
-      const combinedTemplates = Array.from(templateMap.values());
       setStats(fetchedStats);
-      setTemplates(combinedTemplates);
+      setTemplates(Array.from(templateMap.values()));
       setOrders(fetchedOrders);
       setMessages(fetchedMessages);
-      setSettings(fetchedSettings);
-      setOrdersWebhookInput(fetchedSettings.google_sheet_orders_webhook_url || '');
-      setInquiryWebhookInput(fetchedSettings.google_sheet_inquiry_webhook_url || fetchedSettings.google_sheet_webhook_url || '');
     } catch (err) {
       console.error('Failed to load admin data:', err);
     } finally {
       setIsLoading(false);
+      if (!keepSpinning) {
+        setIsRefreshing(false);
+      }
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    const minSpinPromise = new Promise(resolve => setTimeout(resolve, 4000));
+    try {
+      await Promise.all([loadData(true), minSpinPromise]);
+    } catch (err) {
+      console.error('Refresh error:', err);
+      await minSpinPromise;
+    } finally {
       setIsRefreshing(false);
     }
-  };
-
-  const handleSaveOrdersWebhook = async () => {
-    setIsSavingOrders(true);
-    setOrdersFeedback(null);
-    try {
-      await api.adminUpdateSettings(token, { google_sheet_orders_webhook_url: ordersWebhookInput.trim() });
-      setSettings(prev => ({ ...prev, google_sheet_orders_webhook_url: ordersWebhookInput.trim() }));
-      setOrdersFeedback({ type: 'success', message: 'Orders Sheet Webhook URL saved successfully!' });
-    } catch (err: any) {
-      setOrdersFeedback({ type: 'error', message: err?.message || 'Failed to save orders webhook URL' });
-    } finally {
-      setIsSavingOrders(false);
-    }
-  };
-
-  const handleTestOrdersWebhook = async () => {
-    setIsTestingOrders(true);
-    setOrdersFeedback(null);
-    try {
-      const res = await api.adminTestSheetWebhook(token, ordersWebhookInput.trim(), 'orders');
-      setOrdersFeedback({ type: 'success', message: res.message || 'Test order row appended to Google Sheet successfully!' });
-    } catch (err: any) {
-      setOrdersFeedback({ type: 'error', message: err?.message || 'Webhook test failed. Check URL and Google Apps Script permissions.' });
-    } finally {
-      setIsTestingOrders(false);
-    }
-  };
-
-  const handleSaveInquiryWebhook = async () => {
-    setIsSavingInquiry(true);
-    setInquiryFeedback(null);
-    try {
-      await api.adminUpdateSettings(token, { 
-        google_sheet_inquiry_webhook_url: inquiryWebhookInput.trim(),
-        google_sheet_webhook_url: inquiryWebhookInput.trim() 
-      });
-      setSettings(prev => ({ 
-        ...prev, 
-        google_sheet_inquiry_webhook_url: inquiryWebhookInput.trim(),
-        google_sheet_webhook_url: inquiryWebhookInput.trim() 
-      }));
-      setInquiryFeedback({ type: 'success', message: 'Inquiries Sheet Webhook URL saved successfully!' });
-    } catch (err: any) {
-      setInquiryFeedback({ type: 'error', message: err?.message || 'Failed to save inquiries webhook URL' });
-    } finally {
-      setIsSavingInquiry(false);
-    }
-  };
-
-  const handleTestInquiryWebhook = async () => {
-    setIsTestingInquiry(true);
-    setInquiryFeedback(null);
-    try {
-      const res = await api.adminTestSheetWebhook(token, inquiryWebhookInput.trim(), 'inquiries');
-      setInquiryFeedback({ type: 'success', message: res.message || 'Test inquiry row appended to Google Sheet successfully!' });
-    } catch (err: any) {
-      setInquiryFeedback({ type: 'error', message: err?.message || 'Webhook test failed. Check URL and Google Apps Script permissions.' });
-    } finally {
-      setIsTestingInquiry(false);
-    }
-  };
-
-  const handleCopyCode = (code: string, type: 'orders' | 'inquiries') => {
-    navigator.clipboard.writeText(code);
-    setCopiedCodeType(type);
-    setTimeout(() => setCopiedCodeType(null), 2500);
   };
 
   const handleDeleteMessage = async (id: string) => {
     setDeletingMessageId(id);
     setDeleteError(null);
+    setMessages(prev => prev.filter(m => m.id !== id));
+    setConfirmDeleteId(null);
     try {
       await api.adminDeleteMessage(token, id);
-      setMessages(prev => prev.filter(m => m.id !== id));
-      setConfirmDeleteId(null);
+      await loadData(true);
     } catch (err: any) {
       setDeleteError(err?.message || 'Failed to delete inquiry');
+      await loadData(true);
     } finally {
       setDeletingMessageId(null);
-    }
-  };
-
-  const handleResyncMessage = async (id: string) => {
-    setResyncingMessageId(id);
-    setResyncFeedback(null);
-    try {
-      const res = await api.adminResyncMessage(token, id);
-      setMessages(prev => prev.map(m => m.id === id ? { ...m, synced_to_sheet: true, sheet_sync_error: undefined } : m));
-      setResyncFeedback({ id, success: true, message: res.message || 'Inquiry successfully pushed to Google Sheet!' });
-      setTimeout(() => setResyncFeedback(null), 4000);
-    } catch (err: any) {
-      setResyncFeedback({ id, success: false, message: err?.message || 'Failed to sync to Google Sheet' });
-    } finally {
-      setResyncingMessageId(null);
     }
   };
 
@@ -408,70 +165,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Template Actions
   const handleSaveTemplate = async (templateData: Partial<Template>, status: TemplateStatus) => {
-    let saved: Template | null = null;
     if (editingTemplate) {
-      saved = await api.adminUpdateTemplate(token, editingTemplate.id, { ...templateData, status });
+      await api.adminUpdateTemplate(token, editingTemplate.id, { ...templateData, status });
     } else {
-      saved = await api.adminCreateTemplate(token, { ...templateData, status });
+      await api.adminCreateTemplate(token, { ...templateData, status });
     }
-
-    // Cloud Firestore Sync: ensures template never disappears on other devices or container restarts
-    try {
-      const templateToSave = saved || { ...templateData, status, id: editingTemplate?.id };
-      if (templateToSave && templateToSave.id) {
-        await setDoc(doc(firestore, 'templates', templateToSave.id), sanitizeForFirestore(templateToSave), { merge: true });
-      }
-    } catch (fsErr) {
-      console.warn('Firestore template save notice:', fsErr);
-    }
-
-    await loadData();
+    await loadData(true);
   };
 
   const handleTogglePublish = async (template: Template) => {
     const nextStatus: TemplateStatus = template.status === 'Published' ? 'Draft' : 'Published';
     await api.adminUpdateTemplate(token, template.id, { status: nextStatus });
-    try {
-      await setDoc(doc(firestore, 'templates', template.id), { status: nextStatus }, { merge: true });
-    } catch (e) {
-      console.warn('Firestore publish toggle notice:', e);
-    }
-    await loadData();
+    await loadData(true);
   };
 
   const handleCleanupDuplicates = async () => {
     setIsCleaningDuplicates(true);
     setTemplateFeedback(null);
     try {
-      // 1. Trigger server-side deduplication
-      await api.adminCleanupTemplateDuplicates(token).catch(() => {});
-
-      // 2. Wipe any duplicates in Firestore
-      try {
-        const snap = await getDocs(collection(firestore, 'templates'));
-        const seenSlugs = new Set<string>();
-        const seenTitles = new Set<string>();
-        const deleteOps: Promise<any>[] = [];
-
-        snap.forEach(d => {
-          const data = d.data();
-          const s = (data.slug || '').trim().toLowerCase();
-          const t = (data.title || '').trim().toLowerCase();
-          if ((s && seenSlugs.has(s)) || (t && seenTitles.has(t))) {
-            deleteOps.push(deleteDoc(doc(firestore, 'templates', d.id)).catch(() => {}));
-          } else {
-            if (s) seenSlugs.add(s);
-            if (t) seenTitles.add(t);
-          }
-        });
-        if (deleteOps.length > 0) {
-          await Promise.all(deleteOps);
-        }
-      } catch (fsErr) {
-        console.warn('Firestore cleanup error:', fsErr);
+      const res = await api.adminCleanupTemplateDuplicates(token);
+      if (res && res.templates && Array.isArray(res.templates)) {
+        setTemplates(res.templates);
       }
-
-      await loadData();
+      await loadData(true);
       setTemplateFeedback({ type: 'success', message: 'All duplicate templates cleaned up successfully!' });
       setTimeout(() => setTemplateFeedback(null), 4000);
     } catch (err: any) {
@@ -489,57 +205,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const targetSlug = targetTemplate?.slug;
       const targetTitle = targetTemplate?.title;
 
-      const normSlug = (targetSlug || '').trim().toLowerCase();
-      const normTitle = (targetTitle || '').trim().toLowerCase();
-
-      // 1. Delete ALL matches from server backend (with slug & title query)
-      try {
-        await api.adminDeleteTemplate(token, id, targetSlug, targetTitle);
-      } catch (apiErr) {
-        console.warn('Server delete notice:', apiErr);
-      }
-
-      // 2. Delete ALL matching docs from Firestore by document ID, slug, and title
-      try {
-        const snap = await getDocs(collection(firestore, 'templates'));
-        const deleteOps: Promise<any>[] = [];
-        snap.forEach(d => {
-          const data = d.data();
-          const dSlug = (data.slug || '').trim().toLowerCase();
-          const dTitle = (data.title || '').trim().toLowerCase();
-          if (
-            d.id === id || 
-            (normSlug && dSlug === normSlug) || 
-            (normTitle && dTitle === normTitle)
-          ) {
-            deleteOps.push(deleteDoc(doc(firestore, 'templates', d.id)).catch(() => {}));
-          }
-        });
-        if (deleteOps.length > 0) {
-          await Promise.all(deleteOps);
-        }
-      } catch (cleanErr) {
-        console.warn('Firestore template cleanup notice:', cleanErr);
-      }
-
-      // 3. Update local state immediately so user sees the change right away
-      setTemplates(prev => prev.filter(t => 
-        t.id !== id && 
-        (!normSlug || (t.slug || '').trim().toLowerCase() !== normSlug) &&
-        (!normTitle || (t.title || '').trim().toLowerCase() !== normTitle)
-      ));
+      setTemplates(prev => prev.filter(t => t.id !== id));
       setConfirmDeleteTemplateId(null);
+
+      await api.adminDeleteTemplate(token, id, targetSlug, targetTitle);
+
       setTemplateFeedback({ 
         type: 'success', 
         message: `Template "${targetTitle || 'Item'}" deleted successfully!` 
       });
       setTimeout(() => setTemplateFeedback(null), 4000);
-
-      // 4. Refresh full data in background
-      await loadData();
+      await loadData(true);
     } catch (err: any) {
       console.error('Failed to delete template:', err);
       setTemplateFeedback({ type: 'error', message: err?.message || 'Failed to delete template' });
+      await loadData(true);
     } finally {
       setDeletingTemplateId(null);
     }
@@ -553,17 +233,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   ) => {
     const updated = await api.adminUpdateOrderStatus(token, orderId, paymentStatus, accessStatus);
     setSelectedOrder(updated);
-    await loadData();
+    await loadData(true);
   };
 
   const handleClearTestData = async () => {
     try {
       setIsClearingData(true);
+      setOrders([]);
+      setMessages([]);
       await api.adminClearTestData(token);
       setConfirmClearData(false);
       setOrderActionFeedback({ type: 'success', message: 'All test orders and inquiries reset to zero.' });
       setTimeout(() => setOrderActionFeedback(null), 4000);
-      await loadData();
+      await loadData(true);
     } catch (err: any) {
       setOrderActionFeedback({ type: 'error', message: err?.message || 'Failed to reset test data' });
     } finally {
@@ -574,15 +256,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleDeleteOrder = async (orderId: string) => {
     try {
       setDeletingOrderId(orderId);
-      await api.adminDeleteOrder(token, orderId);
+      setOrders(prev => prev.filter(o => o.id !== orderId));
       setConfirmDeleteOrderId(null);
+
+      await api.adminDeleteOrder(token, orderId);
+
       setOrderActionFeedback({ type: 'success', message: 'Order deleted successfully.' });
       setTimeout(() => setOrderActionFeedback(null), 4000);
-      await loadData();
+      await loadData(true);
     } catch (err: any) {
       console.error('Failed to delete order:', err);
       setOrderActionFeedback({ type: 'error', message: err?.message || 'Failed to delete order' });
       setTimeout(() => setOrderActionFeedback(null), 5000);
+      await loadData(true);
     } finally {
       setDeletingOrderId(null);
     }
@@ -688,7 +374,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     : 'text-[#64748B] hover:text-[#111827]'
                 }`}
               >
-                <span>Inquiries & Sheets</span>
+                <span>Inquiries</span>
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-white/20">
                   {messages.length}
                 </span>
@@ -698,27 +384,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
             <button
+              id="admin-refresh-btn"
               type="button"
-              onClick={loadData}
+              onClick={handleManualRefresh}
               disabled={isRefreshing}
-              className="p-2.5 rounded-xl bg-white border border-[#E2E8F0] text-[#64748B] hover:text-[#111827] hover:bg-[#F8FAFC] shadow-2xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-[#E2E8F0] hover:border-[#6D5DFB]/40 text-[#111827] hover:bg-[#F8FAFC] shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
               title="Refresh Data"
               aria-label="Refresh Data"
             >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-[#6D5DFB]' : ''}`} />
-            </button>
-
-            <button
-              id="admin-add-template-btn"
-              type="button"
-              onClick={() => {
-                setEditingTemplate(null);
-                setTemplateModalOpen(true);
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white shadow-xs transition-all active:scale-95 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Template</span>
+              <RefreshCw className={`w-4 h-4 text-[#6D5DFB] ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="text-xs sm:text-sm font-bold">Refresh</span>
             </button>
           </div>
         </div>
@@ -844,7 +519,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </span>
                         </div>
                         <div>
-                          <div className="font-bold text-xs text-[#111827]">{order.template_title || 'Google Template'}</div>
+                          <div className="font-bold text-xs text-[#111827]">{order.template_title || 'Digital Template'}</div>
                           <div className="text-[11px] text-[#64748B]">{order.customer_name} • {order.customer_email}</div>
                         </div>
                         <div className="flex items-center justify-between pt-1">
@@ -886,7 +561,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <div className="text-[#64748B] text-[11px]">{order.customer_email}</div>
                             </td>
                             <td className="py-3 px-4 font-medium text-[#111827]">
-                              {order.template_title || 'Google Template'}
+                              {order.template_title || 'Digital Template'}
                             </td>
                             <td className="py-3 px-4 font-mono font-bold text-[#111827]">
                               ₹{order.amount}
@@ -963,20 +638,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {templateFeedback && (
-              <div className={`mx-6 mt-4 p-3 rounded-xl text-xs font-medium flex items-center justify-between gap-2 ${
-                templateFeedback.type === 'success' 
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
-                  : 'bg-rose-50 text-rose-800 border border-rose-200'
-              }`}>
-                <span>{templateFeedback.message}</span>
-                <button 
-                  type="button" 
-                  onClick={() => setTemplateFeedback(null)} 
-                  className="text-xs font-bold opacity-70 hover:opacity-100 cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
+              templateFeedback.type === 'error' ? (
+                <div className="mx-6 mt-4">
+                  <ErrorAlert
+                    title="Template Notice"
+                    message={templateFeedback.message}
+                    onDismiss={() => setTemplateFeedback(null)}
+                  />
+                </div>
+              ) : (
+                <div className="mx-6 mt-4 p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50/90 to-teal-50/80 border border-emerald-200/80 text-emerald-800 text-xs font-semibold flex items-center justify-between gap-3 shadow-2xs animate-in fade-in">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{templateFeedback.message}</span>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => setTemplateFeedback(null)} 
+                    className="text-xs font-bold opacity-70 hover:opacity-100 cursor-pointer px-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )
             )}
 
             {templates.length === 0 ? (
@@ -1223,138 +907,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* 3. ORDERS TAB */}
         {activeTab === 'orders' && (
           <div className="space-y-6 animate-in fade-in duration-200">
-            {/* Orders Google Sheet Webhook Sync Card */}
-            <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 shadow-xs">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E2E8F0]">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#6D5DFB]/10 text-[#6D5DFB] flex items-center justify-center">
-                    <FileSpreadsheet className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-extrabold text-[#111827]">
-                      Google Sheets Orders Sync
-                    </h3>
-                    <p className="text-xs text-[#64748B]">
-                      Every time a customer places an order or completes payment, a new row will automatically be added to your Orders Google Sheet.
-                    </p>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                    settings.google_sheet_orders_webhook_url
-                      ? 'bg-[#22C55E]/10 text-[#15803D] border border-[#22C55E]/20'
-                      : 'bg-amber-50 text-amber-700 border border-amber-200'
-                  }`}>
-                    <span className={`w-2 h-2 rounded-full ${settings.google_sheet_orders_webhook_url ? 'bg-[#22C55E]' : 'bg-amber-500'}`} />
-                    {settings.google_sheet_orders_webhook_url ? 'Sync Configured' : 'No Webhook Set'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Webhook Form */}
-              <div className="pt-4 space-y-3">
-                <label className="block text-xs font-bold text-[#111827]">
-                  Orders Google Apps Script Webhook URL (POST Endpoint)
-                </label>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="url"
-                    value={ordersWebhookInput}
-                    onChange={(e) => setOrdersWebhookInput(e.target.value)}
-                    placeholder="https://script.google.com/macros/s/AKfycbx.../exec"
-                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-[#E2E8F0] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC]"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSaveOrdersWebhook}
-                      disabled={isSavingOrders}
-                      className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#111827] hover:bg-black text-white cursor-pointer transition-all disabled:opacity-60"
-                    >
-                      {isSavingOrders ? 'Saving...' : 'Save URL'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleTestOrdersWebhook}
-                      disabled={isTestingOrders || !ordersWebhookInput.trim()}
-                      className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white cursor-pointer transition-all disabled:opacity-60 flex items-center gap-1.5"
-                    >
-                      {isTestingOrders ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Testing...</span>
-                        </>
-                      ) : (
-                        <span>Test Sheet</span>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {ordersFeedback && (
-                  <div className={`p-3 rounded-xl text-xs font-medium ${
-                    ordersFeedback.type === 'success' 
-                      ? 'bg-[#22C55E]/10 text-[#15803D] border border-[#22C55E]/20' 
-                      : 'bg-rose-50 text-rose-700 border border-rose-200'
-                  }`}>
-                    {ordersFeedback.message}
-                  </div>
-                )}
-
-                {/* Helpful Orders Apps Script Setup Guide */}
-                <details className="mt-3 text-xs text-[#64748B] bg-[#F8FAFC] p-3.5 rounded-xl border border-[#E2E8F0]">
-                  <summary className="font-bold text-[#111827] cursor-pointer hover:text-[#6D5DFB] flex items-center justify-between">
-                    <span>How to connect your Orders Google Sheet (Click to view code & steps)</span>
-                  </summary>
-                  <div className="mt-2.5 space-y-2 text-xs leading-relaxed text-[#475569]">
-                    <p><strong>Step 1:</strong> Open your <strong>Orders Google Sheet</strong>, click on <strong>Extensions &gt; Apps Script</strong>.</p>
-                    <p><strong>Step 2:</strong> Paste this script into the editor (it automatically adds headers on the first order):</p>
-                    <div className="relative">
-                      <pre className="p-3 bg-white rounded-lg border border-[#E2E8F0] font-mono text-[11px] text-[#111827] overflow-x-auto max-h-52">
-                        {ORDERS_APPS_SCRIPT_CODE}
-                      </pre>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyCode(ORDERS_APPS_SCRIPT_CODE, 'orders')}
-                        className="absolute top-2 right-2 px-2.5 py-1 bg-[#111827] text-white text-[11px] font-semibold rounded-md hover:bg-black transition-colors flex items-center gap-1 cursor-pointer"
-                      >
-                        {copiedCodeType === 'orders' ? <Check className="w-3 h-3 text-[#22C55E]" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedCodeType === 'orders' ? 'Copied!' : 'Copy Code'}</span>
-                      </button>
-                    </div>
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs">
-                      <strong>Step 3 (Deployment):</strong>
-                      <ol className="list-decimal ml-4 mt-1 space-y-1">
-                        <li>Click <strong>Deploy &gt; New deployment</strong>.</li>
-                        <li>Select type: <strong>Web App</strong>.</li>
-                        <li><strong>Execute as:</strong> Select <code>Me</code>.</li>
-                        <li><strong>Who has access:</strong> MUST select <code>Anyone</code>.</li>
-                        <li>Click <strong>Deploy</strong> and copy the generated <strong>Web App URL</strong>.</li>
-                        <li>Paste that URL into the box above and click <strong>Save URL</strong>, then click <strong>Test Sheet</strong>.</li>
-                      </ol>
-                    </div>
-                  </div>
-                </details>
-              </div>
-            </div>
 
             {/* Order Feedback Alert */}
             {orderActionFeedback && (
-              <div className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between gap-3 shadow-2xs ${
-                orderActionFeedback.type === 'success'
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : 'bg-rose-50 text-rose-800 border-rose-200'
-              }`}>
-                <span>{orderActionFeedback.message}</span>
-                <button 
-                  type="button" 
-                  onClick={() => setOrderActionFeedback(null)} 
-                  className="text-xs opacity-60 hover:opacity-100 cursor-pointer px-1"
-                >
-                  ✕
-                </button>
-              </div>
+              orderActionFeedback.type === 'error' ? (
+                <ErrorAlert
+                  title="Order Notice"
+                  message={orderActionFeedback.message}
+                  onDismiss={() => setOrderActionFeedback(null)}
+                />
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50/90 to-teal-50/80 border border-emerald-200/80 text-emerald-800 text-xs font-semibold flex items-center justify-between gap-3 shadow-2xs animate-in fade-in">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{orderActionFeedback.message}</span>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => setOrderActionFeedback(null)} 
+                    className="text-xs opacity-60 hover:opacity-100 cursor-pointer px-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )
             )}
 
             {/* Orders Table */}
@@ -1427,7 +1004,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
 
                       <div>
-                        <div className="font-bold text-xs text-[#111827]">{order.template_title || 'Google Template'}</div>
+                        <div className="font-bold text-xs text-[#111827]">{order.template_title || 'Digital Template'}</div>
                         <div className="text-[11px] text-[#64748B]">{order.customer_name} • {order.customer_email}</div>
                         {order.razorpay_payment_id && (
                           <div className="text-[10px] text-[#64748B] font-mono mt-0.5">
@@ -1523,7 +1100,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div className="text-[11px] text-[#64748B]">{order.customer_email}</div>
                           </td>
                           <td className="py-3 px-4 font-medium text-[#111827]">
-                            {order.template_title || 'Google Template'}
+                            {order.template_title || 'Digital Template'}
                           </td>
                           <td className="py-3 px-4 font-mono font-bold text-[#111827]">
                             ₹{order.amount}
@@ -1601,125 +1178,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {/* 4. Inquiries & Google Sheets Tab */}
+        {/* 4. Customer Inquiries Tab */}
         {activeTab === 'messages' && (
           <div className="space-y-6 animate-in fade-in duration-200">
-            {/* Google Sheets Sync Integration Box */}
-            <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 shadow-xs">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E2E8F0]">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#0284C7]/10 text-[#0284C7] flex items-center justify-center">
-                    <FileSpreadsheet className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-extrabold text-[#111827]">
-                      Google Sheets Inquiry Sync
-                    </h3>
-                    <p className="text-xs text-[#64748B]">
-                      Every time a customer sends a message on the contact page, it will automatically append as a new row in your Inquiry Google Sheet.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                    settings.google_sheet_inquiry_webhook_url || settings.google_sheet_webhook_url
-                      ? 'bg-[#22C55E]/10 text-[#15803D] border border-[#22C55E]/20'
-                      : 'bg-amber-50 text-amber-700 border border-amber-200'
-                  }`}>
-                    <span className={`w-2 h-2 rounded-full ${(settings.google_sheet_inquiry_webhook_url || settings.google_sheet_webhook_url) ? 'bg-[#22C55E]' : 'bg-amber-500'}`} />
-                    {(settings.google_sheet_inquiry_webhook_url || settings.google_sheet_webhook_url) ? 'Sync Configured' : 'No Webhook Set'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Webhook Form */}
-              <div className="pt-4 space-y-3">
-                <label className="block text-xs font-bold text-[#111827]">
-                  Inquiries Google Apps Script Webhook URL (POST Endpoint)
-                </label>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="url"
-                    value={inquiryWebhookInput}
-                    onChange={(e) => setInquiryWebhookInput(e.target.value)}
-                    placeholder="https://script.google.com/macros/s/AKfycbx.../exec"
-                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-[#E2E8F0] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC]"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSaveInquiryWebhook}
-                      disabled={isSavingInquiry}
-                      className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#111827] hover:bg-black text-white cursor-pointer transition-all disabled:opacity-60"
-                    >
-                      {isSavingInquiry ? 'Saving...' : 'Save URL'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleTestInquiryWebhook}
-                      disabled={isTestingInquiry || !inquiryWebhookInput.trim()}
-                      className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white cursor-pointer transition-all disabled:opacity-60 flex items-center gap-1.5"
-                    >
-                      {isTestingInquiry ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Testing...</span>
-                        </>
-                      ) : (
-                        <span>Test Sheet</span>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {inquiryFeedback && (
-                  <div className={`p-3 rounded-xl text-xs font-medium ${
-                    inquiryFeedback.type === 'success' 
-                      ? 'bg-[#22C55E]/10 text-[#15803D] border border-[#22C55E]/20' 
-                      : 'bg-rose-50 text-rose-700 border border-rose-200'
-                  }`}>
-                    {inquiryFeedback.message}
-                  </div>
-                )}
-
-                {/* Helpful Google Apps Script Setup Guide */}
-                <details className="mt-3 text-xs text-[#64748B] bg-[#F8FAFC] p-3.5 rounded-xl border border-[#E2E8F0]">
-                  <summary className="font-bold text-[#111827] cursor-pointer hover:text-[#6D5DFB] flex items-center justify-between">
-                    <span>How to connect your Inquiry Google Sheet (Click to view code & steps)</span>
-                  </summary>
-                  <div className="mt-2.5 space-y-2 text-xs leading-relaxed text-[#475569]">
-                    <p><strong>Step 1:</strong> Open your <strong>Inquiry Google Sheet</strong>, click on <strong>Extensions &gt; Apps Script</strong>.</p>
-                    <p><strong>Step 2:</strong> Paste this script into the editor (it automatically adds headers on the first inquiry):</p>
-                    <div className="relative">
-                      <pre className="p-3 bg-white rounded-lg border border-[#E2E8F0] font-mono text-[11px] text-[#111827] overflow-x-auto max-h-52">
-                        {INQUIRIES_APPS_SCRIPT_CODE}
-                      </pre>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyCode(INQUIRIES_APPS_SCRIPT_CODE, 'inquiries')}
-                        className="absolute top-2 right-2 px-2.5 py-1 bg-[#111827] text-white text-[11px] font-semibold rounded-md hover:bg-black transition-colors flex items-center gap-1 cursor-pointer"
-                      >
-                        {copiedCodeType === 'inquiries' ? <Check className="w-3 h-3 text-[#22C55E]" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedCodeType === 'inquiries' ? 'Copied!' : 'Copy Code'}</span>
-                      </button>
-                    </div>
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs">
-                      <strong>Step 3 (Deployment):</strong>
-                      <ol className="list-decimal ml-4 mt-1 space-y-1">
-                        <li>Click <strong>Deploy &gt; New deployment</strong> (or <em>Manage deployments &gt; Edit</em>).</li>
-                        <li>Select type: <strong>Web App</strong>.</li>
-                        <li><strong>Execute as:</strong> Select <code>Me</code>.</li>
-                        <li><strong>Who has access:</strong> MUST select <code>Anyone</code>. <em>(If left as 'Only myself', Google blocks submissions with error 401).</em></li>
-                        <li>Click <strong>Deploy</strong> and copy the generated <strong>Web App URL</strong>.</li>
-                        <li>Paste that URL into the box above and click <strong>Save URL</strong>, then click <strong>Test Sheet</strong>.</li>
-                      </ol>
-                    </div>
-                  </div>
-                </details>
-              </div>
-            </div>
-
             {/* Received Customer Messages Table */}
             <div className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden shadow-xs">
               <div className="p-6 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1734,18 +1195,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               {deleteError && (
-                <div className="mx-6 mt-4 p-3 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-xs">
-                  {deleteError}
-                </div>
-              )}
-
-              {resyncFeedback && (
-                <div className={`mx-6 mt-4 p-3 rounded-xl text-xs font-medium ${
-                  resyncFeedback.success
-                    ? 'bg-[#22C55E]/10 text-[#15803D] border border-[#22C55E]/20'
-                    : 'bg-rose-50 text-rose-700 border border-rose-200'
-                }`}>
-                  {resyncFeedback.message}
+                <div className="mx-6 mt-4">
+                  <ErrorAlert
+                    title="Inquiry Notice"
+                    message={deleteError}
+                    onDismiss={() => setDeleteError(null)}
+                  />
                 </div>
               )}
 
@@ -1779,36 +1234,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {msg.message}
                         </p>
 
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[#F8FAFC]">
-                          <div>
-                            {msg.synced_to_sheet ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#22C55E]/10 text-[#15803D] border border-[#22C55E]/20">
-                                <Check className="w-3 h-3 text-[#22C55E]" />
-                                Synced
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                <Clock className="w-3 h-3 text-amber-500" />
-                                Not Synced
-                              </span>
-                            )}
-                          </div>
-
+                        <div className="flex items-center justify-end pt-1 border-t border-[#F8FAFC]">
                           <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleResyncMessage(msg.id)}
-                              disabled={resyncingMessageId === msg.id}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#6D5DFB]/10 text-[#6D5DFB] hover:bg-[#6D5DFB] hover:text-white transition-all cursor-pointer disabled:opacity-50"
-                            >
-                              {resyncingMessageId === msg.id ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <UploadCloud className="w-3 h-3" />
-                              )}
-                              <span>{msg.synced_to_sheet ? 'Re-sync' : 'Sync'}</span>
-                            </button>
-
                             {confirmDeleteId === msg.id ? (
                               <div className="inline-flex items-center gap-1">
                                 <button
@@ -1855,7 +1282,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <th className="py-3.5 px-5">Email</th>
                           <th className="py-3.5 px-5">Inquiry Category</th>
                           <th className="py-3.5 px-5">Description</th>
-                          <th className="py-3.5 px-5">Sheet Sync</th>
                           <th className="py-3.5 px-5 text-right">Action</th>
                         </tr>
                       </thead>
@@ -1888,43 +1314,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </div>
                               )}
                             </td>
-                            <td className="py-4 px-5 whitespace-nowrap">
-                              {msg.synced_to_sheet ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#22C55E]/10 text-[#15803D] border border-[#22C55E]/20">
-                                  <Check className="w-3 h-3 text-[#22C55E]" />
-                                  Synced
-                                </span>
-                              ) : (
-                                <div className="flex flex-col gap-1 items-start">
-                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                    <Clock className="w-3 h-3 text-amber-500" />
-                                    Not Synced
-                                  </span>
-                                  {msg.sheet_sync_error && (
-                                    <span className="text-[10px] text-rose-600 max-w-[150px] truncate" title={msg.sheet_sync_error}>
-                                      {msg.sheet_sync_error}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </td>
                             <td className="py-4 px-5 text-right whitespace-nowrap">
                               <div className="inline-flex items-center gap-2 justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() => handleResyncMessage(msg.id)}
-                                  disabled={resyncingMessageId === msg.id}
-                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#6D5DFB]/10 text-[#6D5DFB] hover:bg-[#6D5DFB] hover:text-white transition-all cursor-pointer shadow-2xs disabled:opacity-50"
-                                  title="Push this inquiry to Google Sheet"
-                                >
-                                  {resyncingMessageId === msg.id ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <UploadCloud className="w-3.5 h-3.5" />
-                                  )}
-                                  <span>{msg.synced_to_sheet ? 'Re-sync' : 'Sync to Sheet'}</span>
-                                </button>
-
                                 {confirmDeleteId === msg.id ? (
                                   <div className="inline-flex items-center gap-1.5">
                                     <button

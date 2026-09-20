@@ -359,7 +359,7 @@ class Database {
     return this.data.admins.some(a => a.email.toLowerCase() === clean);
   }
 
-  public createOrGetFirebaseAdmin(email: string, firebaseUid?: string): AdminUser | null {
+  public createOrGetAdminUser(email: string, adminId?: string): AdminUser | null {
     const cleanEmail = email.trim().toLowerCase();
     const existing = this.getAdminByEmail(cleanEmail);
     if (existing) return existing;
@@ -370,7 +370,7 @@ class Database {
     }
 
     const newAdmin: AdminUser = {
-      id: firebaseUid || `adm_${Date.now()}`,
+      id: adminId || `adm_${Date.now()}`,
       email: cleanEmail,
       created_at: new Date().toISOString()
     };
