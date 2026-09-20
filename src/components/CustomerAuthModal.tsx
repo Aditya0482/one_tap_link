@@ -17,6 +17,7 @@ import {
 import { Template, User } from '../types';
 import { api } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
+import { validateName, validateEmail, validatePassword, validateOtp } from '../utils/validators';
 
 interface CustomerAuthModalProps {
   isOpen: boolean;
@@ -50,6 +51,32 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isSimulated, setIsSimulated] = useState(false);
 
+  // Field validation errors & touched tracking
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const validateField = (field: string, val?: string) => {
+    let err = '';
+    if (field === 'name' && mode === 'signup') {
+      err = validateName(val !== undefined ? val : name);
+    } else if (field === 'email') {
+      err = validateEmail(val !== undefined ? val : email);
+    } else if (field === 'password' && mode !== 'forgot') {
+      err = validatePassword(val !== undefined ? val : password);
+    } else if (field === 'otp' && mode === 'forgot' && forgotStep === 'otp') {
+      err = validateOtp(val !== undefined ? val : otp);
+    } else if (field === 'newPassword' && mode === 'forgot' && forgotStep === 'otp') {
+      err = validatePassword(val !== undefined ? val : newPassword, 'New password');
+    }
+    setFieldErrors(prev => ({ ...prev, [field]: err }));
+    return err;
+  };
+
+  const handleBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    validateField(field);
+  };
+
   // Resend cooldown timer
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -73,6 +100,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     setForgotStep('email');
     setResendCooldown(0);
     setIsSimulated(false);
+    setFieldErrors({});
+    setTouched({});
   };
 
   // Reset when modal is reopened
@@ -96,13 +125,18 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     setShowNewPassword(false);
     setForgotStep('email');
     setMode(newMode);
+    setFieldErrors({});
+    setTouched({});
   };
 
   // Step 1 of Forgot Password: Send OTP to email
   const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!email.trim()) {
-      setError('Please enter your registered email address to receive a verification code.');
+    const emailErr = validateEmail(email);
+    setTouched(prev => ({ ...prev, email: true }));
+    if (emailErr) {
+      setFieldErrors(prev => ({ ...prev, email: emailErr }));
+      setError(emailErr);
       return;
     }
 
@@ -114,6 +148,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       setForgotStep('otp');
       setResendCooldown(30);
       setSuccessNotice(`A 6-digit verification code has been sent to ${email.trim()}.`);
+      setFieldErrors({});
+      setTouched({});
     } catch (err: any) {
       console.error('Send OTP error:', err);
       setError(err.message || 'Failed to send verification code. Please check your email address.');
@@ -125,12 +161,14 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   // Step 2 of Forgot Password: Verify OTP & set new password
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!otp.trim() || otp.trim().length !== 6) {
-      setError('Please enter the complete 6-digit verification code sent to your email.');
-      return;
-    }
-    if (!newPassword.trim() || newPassword.trim().length < 6) {
-      setError('New password must be at least 6 characters long.');
+    const otpErr = validateOtp(otp);
+    const passErr = validatePassword(newPassword, 'New password');
+
+    setTouched({ otp: true, newPassword: true });
+    setFieldErrors({ otp: otpErr, newPassword: passErr });
+
+    if (otpErr || passErr) {
+      setError(otpErr || passErr);
       return;
     }
 
@@ -144,6 +182,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       setOtp('');
       setNewPassword('');
       setPassword('');
+      setFieldErrors({});
+      setTouched({});
       setSuccessNotice('Your password has been reset successfully! You can now sign in with your new password.');
     } catch (err: any) {
       console.error('Reset password error:', err);
@@ -167,13 +207,21 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
       }
     }
 
-    if (!email.trim() || !password.trim()) {
-      setError('Please fill in both email and password to proceed.');
-      return;
+    const errors: Record<string, string> = {};
+    if (mode === 'signup') {
+      const nameErr = validateName(name);
+      if (nameErr) errors.name = nameErr;
     }
+    const emailErr = validateEmail(email);
+    if (emailErr) errors.email = emailErr;
 
-    if (mode === 'signup' && password.trim().length < 6) {
-      setError('Password must contain at least 6 characters.');
+    const passErr = validatePassword(password, 'Password');
+    if (passErr) errors.password = passErr;
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setTouched({ name: true, email: true, password: true });
+      setError('Please resolve the highlighted errors before submitting.');
       return;
     }
 
@@ -350,11 +398,23 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     maxLength={6}
                     required
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setOtp(val);
+                      if (touched.otp) validateField('otp', val);
+                    }}
+                    onBlur={() => handleBlur('otp')}
                     placeholder="123456"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 outline-none text-base font-mono tracking-widest text-[#111827] transition-all bg-white text-center font-bold"
+                    className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
+                      touched.otp && fieldErrors.otp
+                        ? 'border-red-500 ring-2 ring-red-500/20'
+                        : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20'
+                    } outline-none text-base font-mono tracking-widest text-[#111827] transition-all bg-white text-center font-bold`}
                   />
                 </div>
+                {touched.otp && fieldErrors.otp && (
+                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.otp}</p>
+                )}
               </div>
 
               {/* New Password Input */}
@@ -369,9 +429,17 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     required
                     minLength={6}
                     value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
+                    onChange={(e) => {
+                      setNewPassword(e.target.value);
+                      if (touched.newPassword) validateField('newPassword', e.target.value);
+                    }}
+                    onBlur={() => handleBlur('newPassword')}
                     placeholder="Enter new password (min. 6 characters)"
-                    className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 outline-none text-xs text-[#111827] transition-all bg-white"
+                    className={`w-full pl-10 pr-10 py-2.5 rounded-xl border ${
+                      touched.newPassword && fieldErrors.newPassword
+                        ? 'border-red-500 ring-2 ring-red-500/20'
+                        : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20'
+                    } outline-none text-xs text-[#111827] transition-all bg-white`}
                   />
                   <button
                     type="button"
@@ -383,12 +451,15 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     {showNewPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                   </button>
                 </div>
+                {touched.newPassword && fieldErrors.newPassword && (
+                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.newPassword}</p>
+                )}
               </div>
 
               {/* Submit Reset Button */}
               <button
                 type="submit"
-                disabled={loading || otp.length < 6 || newPassword.length < 6}
+                disabled={loading}
                 className="w-full mt-2 py-3 px-4 rounded-xl font-bold text-xs bg-[#6D5DFB] hover:bg-[#5B4CE0] text-white transition-all shadow-[0_4px_16px_rgba(109,93,251,0.25)] hover:shadow-[0_6px_20px_rgba(109,93,251,0.35)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.99]"
               >
                 {loading ? (
@@ -447,11 +518,22 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                       type="text"
                       required
                       value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      onChange={(e) => {
+                        setName(e.target.value);
+                        if (touched.name) validateField('name', e.target.value);
+                      }}
+                      onBlur={() => handleBlur('name')}
                       placeholder="John Doe"
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 outline-none text-xs text-[#111827] transition-all bg-white"
+                      className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
+                        touched.name && fieldErrors.name
+                          ? 'border-red-500 ring-2 ring-red-500/20'
+                          : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20'
+                      } outline-none text-xs text-[#111827] transition-all bg-white`}
                     />
                   </div>
+                  {touched.name && fieldErrors.name && (
+                    <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.name}</p>
+                  )}
                 </div>
               )}
 
@@ -465,11 +547,22 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     type="email"
                     required
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (touched.email) validateField('email', e.target.value);
+                    }}
+                    onBlur={() => handleBlur('email')}
                     placeholder="name@example.com"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 outline-none text-xs text-[#111827] transition-all bg-white"
+                    className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
+                      touched.email && fieldErrors.email
+                        ? 'border-red-500 ring-2 ring-red-500/20'
+                        : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20'
+                    } outline-none text-xs text-[#111827] transition-all bg-white`}
                   />
                 </div>
+                {touched.email && fieldErrors.email && (
+                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.email}</p>
+                )}
               </div>
 
               {mode !== 'forgot' && (
@@ -483,9 +576,17 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                       type={showPassword ? 'text' : 'password'}
                       required
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (touched.password) validateField('password', e.target.value);
+                      }}
+                      onBlur={() => handleBlur('password')}
                       placeholder="Enter Password"
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 outline-none text-xs text-[#111827] transition-all bg-white"
+                      className={`w-full pl-10 pr-10 py-2.5 rounded-xl border ${
+                        touched.password && fieldErrors.password
+                          ? 'border-red-500 ring-2 ring-red-500/20'
+                          : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20'
+                      } outline-none text-xs text-[#111827] transition-all bg-white`}
                     />
                     <button
                       type="button"
@@ -497,6 +598,9 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                       {showPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                     </button>
                   </div>
+                  {touched.password && fieldErrors.password && (
+                    <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.password}</p>
+                  )}
                   {mode === 'signin' && (
                     <div className="mt-1.5 flex justify-end">
                       <button

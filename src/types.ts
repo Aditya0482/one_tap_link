@@ -110,32 +110,6 @@ export interface PurchaseRecord {
   thumbnailUrl?: string;
 }
 
-export interface InstamojoConfigResponse {
-  is_configured: boolean;
-  sandbox: boolean;
-  mode: string;
-}
-
-export interface InstamojoPaymentRequestResponse {
-  success: boolean;
-  order_id: string;
-  payment_request_id?: string;
-  payment_url?: string;
-  amount: number;
-  currency: string;
-  product_id: string;
-  product_name: string;
-  is_test_simulation?: boolean;
-  warning?: string;
-}
-
-export interface InstamojoVerifyResponse {
-  success: boolean;
-  verified: boolean;
-  order: Order;
-  purchase: PurchaseRecord;
-  message?: string;
-}
 
 export interface RazorpayOrderResponse {
   success: boolean;

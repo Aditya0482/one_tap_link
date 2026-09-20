@@ -309,18 +309,19 @@ async function startServer() {
     }
   });
 
-  // 3b. Instamojo Configuration
-  app.get('/api/instamojo/config', (_req, res) => {
-    const creds = pgDb.getInstamojoCredentials();
+  // 3b. Razorpay Configuration (Public key info only)
+  app.get('/api/razorpay/config', (_req, res) => {
+    const creds = pgDb.getRazorpayCredentials();
     res.json({
       is_configured: creds.is_configured,
-      sandbox: creds.sandbox,
+      key_id: creds.is_configured ? creds.key_id : '',
+      test_mode: creds.test_mode,
       mode: creds.mode
     });
   });
 
-  // 3c. Instamojo: Create Payment Request
-  app.post('/api/instamojo/create-request', async (req, res) => {
+  // 3c. Razorpay: Create Order
+  app.post('/api/razorpay/create-order', async (req, res) => {
     try {
       const { template_id, customer_name, customer_email, customer_phone, user_id } = req.body;
 
@@ -335,198 +336,178 @@ async function startServer() {
       }
 
       const trustedPrice = template.sale_price ?? template.price;
-      const creds = pgDb.getInstamojoCredentials();
+      const creds = pgDb.getRazorpayCredentials();
 
-      let instamojoPaymentRequestId: string;
-      let paymentUrl: string | null = null;
+      let razorpayOrderId: string;
       let isSimulation = false;
       let warningMsg: string | undefined;
 
-      // Clean phone number
       const cleanPhone = (customer_phone || '').trim().replace(/[^0-9+]/g, '');
 
       if (creds.is_configured) {
-        // Real Instamojo API Request Creation
+        // Real Razorpay Order Creation
         try {
-          const baseUrl = creds.sandbox 
-            ? 'https://test.instamojo.com/api/1.1/' 
-            : 'https://www.instamojo.com/api/1.1/';
-          
-          const host = req.get('host');
-          const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
-          const redirectUrl = `${protocol}://${host}/api/instamojo/callback`;
-          const webhookUrl = `${protocol}://${host}/api/instamojo/webhook`;
+          const amountInPaise = Math.round(Number(trustedPrice) * 100); // Razorpay takes paise
 
-          // Purpose limit in Instamojo is max 30 chars
-          const cleanTitle = (template.title || 'Digital Template').replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
-          const purpose = cleanTitle.length > 30 ? cleanTitle.substring(0, 30) : cleanTitle;
-
-          const params = new URLSearchParams();
-          params.append('purpose', purpose);
-          params.append('amount', Number(trustedPrice).toFixed(2));
-          params.append('buyer_name', (customer_name || 'Customer').trim().substring(0, 100));
-          params.append('email', (customer_email || 'customer@example.com').trim().toLowerCase());
-          if (cleanPhone) {
-            params.append('phone', cleanPhone);
-          }
-          params.append('redirect_url', redirectUrl);
-          params.append('webhook', webhookUrl);
-          params.append('send_email', 'False');
-          params.append('send_sms', 'False');
-          params.append('allow_repeated_payments', 'False');
-
-          const mojoResponse = await fetch(`${baseUrl}payment-requests/`, {
+          const rzpResponse = await fetch('https://api.razorpay.com/v1/orders', {
             method: 'POST',
             headers: {
-              'X-Api-Key': creds.api_key,
-              'X-Auth-Token': creds.auth_token,
-              'Content-Type': 'application/x-www-form-urlencoded'
+              'Content-Type': 'application/json',
+              'Authorization': 'Basic ' + Buffer.from(`${creds.key_id}:${creds.key_secret}`).toString('base64')
             },
-            body: params.toString()
+            body: JSON.stringify({
+              amount: amountInPaise,
+              currency: 'INR',
+              receipt: `ord_${Date.now()}`,
+              notes: {
+                template_id: template.id,
+                template_name: template.title,
+                customer_name: (customer_name || 'Customer').trim(),
+                customer_email: (customer_email || '').trim().toLowerCase(),
+                customer_phone: cleanPhone,
+                user_id: user_id || ''
+              }
+            })
           });
 
-          const mojoData = await mojoResponse.json().catch(() => ({}));
+          const rzpData = await rzpResponse.json().catch(() => ({}));
 
-          if (!mojoResponse.ok || !mojoData.success) {
-            console.error('Instamojo Payment Request API error:', mojoData);
-            let userFriendlyMsg = 'Failed to create payment request with Instamojo.';
-            const rawMsg = typeof mojoData.message === 'string' ? mojoData.message : JSON.stringify(mojoData.message || '');
-            if (rawMsg.toLowerCase().includes('permission') || rawMsg.toLowerCase().includes('cannot accept payments')) {
-              userFriendlyMsg = 'Instamojo Live Account: Bank Account / KYC verification is pending on your Instamojo dashboard before live payments can be accepted. Please visit your Instamojo Dashboard to verify your bank details.';
-            } else if (typeof mojoData.message === 'string') {
-              userFriendlyMsg = mojoData.message;
-            }
-            return res.status(502).json({
-              error: userFriendlyMsg,
-              details: mojoData.message || mojoData
-            });
+          if (!rzpResponse.ok || !rzpData.id) {
+            console.error('Razorpay Order API error:', rzpData);
+            const errMsg = rzpData.error?.description || 'Failed to create order with Razorpay.';
+            return res.status(502).json({ error: errMsg, details: rzpData.error || rzpData });
           }
 
-          instamojoPaymentRequestId = mojoData.payment_request.id;
-          paymentUrl = mojoData.payment_request.longurl;
+          razorpayOrderId = rzpData.id;
         } catch (apiErr: any) {
-          console.error('Failed to communicate with Instamojo API:', apiErr);
+          console.error('Failed to communicate with Razorpay API:', apiErr);
           return res.status(502).json({
-            error: 'Network error communicating with Instamojo payment gateway.',
+            error: 'Network error communicating with Razorpay payment gateway.',
             details: apiErr.message
           });
         }
       } else {
         // Fallback Test Simulation mode when keys are not set
         isSimulation = true;
-        instamojoPaymentRequestId = `mojo_req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-        warningMsg = 'Instamojo API Key & Auth Token not set in .env. Running in Test Simulation mode.';
+        razorpayOrderId = `rzp_sim_order_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        warningMsg = 'Razorpay Key ID & Key Secret not set in .env. Running in Test Simulation mode.';
       }
 
       // Record pending order in DB
-      const pendingOrder = await pgDb.createPendingInstamojoOrder({
+      const pendingOrder = await pgDb.createPendingRazorpayOrder({
         customer_name: customer_name || 'Customer',
         customer_email: customer_email || 'customer@example.com',
-        customer_phone: cleanPhone,
         user_id,
         template_id: template.id,
-        payment_request_id: instamojoPaymentRequestId
+        razorpay_order_id: razorpayOrderId
       });
 
       res.status(200).json({
         success: true,
-        payment_request_id: instamojoPaymentRequestId,
-        payment_url: paymentUrl,
-        amount: Number(trustedPrice),
+        key_id: creds.key_id,
+        order_id: razorpayOrderId,
+        amount: Math.round(Number(trustedPrice) * 100), // in paise
         currency: 'INR',
         product_id: template.id,
         product_name: template.title,
         internal_order_id: pendingOrder?.id,
         is_test_simulation: isSimulation,
-        sandbox: creds.sandbox,
+        test_mode: creds.test_mode,
         mode: creds.mode,
         warning: warningMsg
       });
     } catch (error: any) {
-      console.error('Instamojo request creation error:', error);
-      res.status(500).json({ error: 'Internal server error while creating payment request.' });
+      console.error('Razorpay order creation error:', error);
+      res.status(500).json({ error: 'Internal server error while creating payment order.' });
     }
   });
 
-  // 3d. Instamojo: Payment Redirect Callback (User is redirected back from Instamojo page)
-  app.get('/api/instamojo/callback', async (req, res) => {
+  // 3d. Razorpay: Verify Payment Signature (Called after user completes payment in popup)
+  app.post('/api/razorpay/verify-payment', async (req, res) => {
     try {
-      const { payment_id, payment_status, payment_request_id } = req.query;
+      const {
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
+        template_id,
+        user_id,
+        customer_name,
+        customer_email,
+        customer_phone
+      } = req.body;
 
-      if (!payment_id || !payment_request_id) {
-        console.warn('[Instamojo Callback] Missing payment_id or payment_request_id in query params:', req.query);
-        return res.redirect('/#checkout?error=invalid_callback');
+      if (!razorpay_order_id || !razorpay_payment_id) {
+        return res.status(400).json({ error: 'razorpay_order_id and razorpay_payment_id are required.' });
       }
 
-      const pId = String(payment_id).trim();
-      const prId = String(payment_request_id).trim();
-      const status = String(payment_status || '').trim();
+      const creds = pgDb.getRazorpayCredentials();
 
-      if (status.toLowerCase() === 'credit') {
-        const verifiedOrder = await pgDb.markInstamojoOrderPaid({
-          payment_request_id: prId,
-          payment_id: pId
-        });
+      // Verify HMAC-SHA256 signature (skip in simulation mode)
+      if (creds.is_configured && razorpay_signature) {
+        const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+        const expectedSignature = crypto
+          .createHmac('sha256', creds.key_secret)
+          .update(body)
+          .digest('hex');
 
-        const orderRef = verifiedOrder?.id || prId;
-        return res.redirect(`/#thankyou?order_id=${encodeURIComponent(orderRef)}`);
-      } else {
-        console.warn('[Instamojo Callback] Payment status was not Credit:', status);
-        return res.redirect(`/#checkout?error=payment_${encodeURIComponent(status || 'failed')}`);
-      }
-    } catch (error: any) {
-      console.error('[Instamojo Callback] Error handling callback:', error);
-      return res.redirect('/#checkout?error=callback_processing_failed');
-    }
-  });
-
-  // 3e. Instamojo: Webhook Event Notification
-  app.post('/api/instamojo/webhook', async (req, res) => {
-    try {
-      const creds = pgDb.getInstamojoCredentials();
-      const body = req.body || {};
-
-      // If salt is provided, verify MAC
-      if (creds.salt && body.mac) {
-        const macReceived = body.mac;
-        const dataToSign = { ...body };
-        delete dataToSign.mac;
-
-        const sortedKeys = Object.keys(dataToSign).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-        const message = sortedKeys.map(k => dataToSign[k]).join('|');
-        const calculatedMac = crypto.createHmac('sha1', creds.salt).update(message).digest('hex');
-
-        if (calculatedMac !== macReceived) {
-          console.error('[Instamojo Webhook] MAC signature verification failed!');
-          return res.status(400).send('MAC mismatch');
+        if (expectedSignature !== razorpay_signature) {
+          console.error('[Razorpay] Signature verification failed!');
+          return res.status(400).json({ error: 'Payment signature verification failed. Please contact support.' });
         }
       }
 
-      if (body.status === 'Credit') {
-        await pgDb.markInstamojoOrderPaid({
-          payment_request_id: body.payment_request_id,
-          payment_id: body.payment_id,
-          customer_name: body.buyer_name,
-          customer_email: body.buyer,
-          customer_phone: body.buyer_phone
-        });
-        console.log(`[Instamojo Webhook] Successfully processed payment ${body.payment_id} for request ${body.payment_request_id}`);
+      const verifiedOrder = await pgDb.markRazorpayOrderPaid({
+        razorpay_order_id,
+        razorpay_payment_id,
+        template_id: template_id || '',
+        user_id,
+        customer_name,
+        customer_email,
+        customer_phone
+      });
+
+      if (!verifiedOrder) {
+        return res.status(500).json({ error: 'Failed to record payment. Please contact support.' });
       }
 
-      res.status(200).send('OK');
+      const template = await pgDb.getTemplateById(verifiedOrder.template_id, true);
+
+      const purchaseRecord = {
+        userId: user_id || verifiedOrder.user_id || 'anonymous',
+        customerEmail: verifiedOrder.customer_email,
+        customerName: verifiedOrder.customer_name,
+        productId: verifiedOrder.template_id,
+        productName: verifiedOrder.template_title || template?.title,
+        amount: verifiedOrder.amount,
+        paymentGateway: 'razorpay',
+        razorpayOrderId: razorpay_order_id,
+        razorpayPaymentId: razorpay_payment_id,
+        paymentStatus: 'paid',
+        purchasedAt: verifiedOrder.created_at || new Date().toISOString(),
+        accessUrl: template?.access_url || verifiedOrder.access_url,
+        thumbnailUrl: template?.thumbnail_url || verifiedOrder.template_thumbnail
+      };
+
+      res.json({
+        success: true,
+        verified: true,
+        order: verifiedOrder,
+        purchase: purchaseRecord,
+        message: 'Payment verified successfully! Access unlocked.'
+      });
     } catch (error: any) {
-      console.error('[Instamojo Webhook] Error:', error);
-      res.status(500).send('Internal Error');
+      console.error('[Razorpay Verify] Error:', error);
+      res.status(500).json({ error: 'Internal server error while verifying payment.' });
     }
   });
 
-  // 3f. Instamojo: Simulate Payment Completion (Test Simulation Mode)
-  app.post('/api/instamojo/simulate-payment', async (req, res) => {
+  // 3e. Razorpay: Simulate Payment Completion (Test Simulation Mode)
+  app.post('/api/razorpay/simulate-payment', async (req, res) => {
     try {
-      const { payment_request_id, template_id, user_id, customer_name, customer_email, customer_phone } = req.body;
+      const { razorpay_order_id, template_id, user_id, customer_name, customer_email, customer_phone } = req.body;
 
-      if (!payment_request_id || !template_id) {
-        return res.status(400).json({ error: 'payment_request_id and template_id are required.' });
+      if (!razorpay_order_id || !template_id) {
+        return res.status(400).json({ error: 'razorpay_order_id and template_id are required.' });
       }
 
       const template = await pgDb.getTemplateById(template_id, true);
@@ -534,11 +515,11 @@ async function startServer() {
         return res.status(404).json({ error: 'Template not found.' });
       }
 
-      const simulatedPaymentId = `MOJO_SIM_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      const simulatedPaymentId = `pay_SIM_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
-      const verifiedOrder = await pgDb.markInstamojoOrderPaid({
-        payment_request_id,
-        payment_id: simulatedPaymentId,
+      const verifiedOrder = await pgDb.markRazorpayOrderPaid({
+        razorpay_order_id,
+        razorpay_payment_id: simulatedPaymentId,
         template_id: template.id,
         user_id,
         customer_name,
@@ -557,9 +538,9 @@ async function startServer() {
         productId: template.id,
         productName: template.title,
         amount: verifiedOrder.amount,
-        paymentGateway: 'instamojo',
-        paymentRequestId: payment_request_id,
-        paymentId: simulatedPaymentId,
+        paymentGateway: 'razorpay',
+        razorpayOrderId: razorpay_order_id,
+        razorpayPaymentId: simulatedPaymentId,
         paymentStatus: 'paid',
         purchasedAt: verifiedOrder.created_at || new Date().toISOString(),
         accessUrl: template.access_url,
@@ -579,7 +560,53 @@ async function startServer() {
     }
   });
 
-  // 3g. Single Order / Access Verification Lookup (by Order ID, Instamojo Request ID, or Payment ID)
+  // 3f. Razorpay: Webhook Event Notification (optional — for payment confirmation from Razorpay servers)
+  app.post('/api/razorpay/webhook', async (req, res) => {
+    try {
+      const creds = pgDb.getRazorpayCredentials();
+      const signature = req.headers['x-razorpay-signature'] as string;
+      const rawBody = JSON.stringify(req.body);
+
+      // Verify webhook signature if webhook secret is set
+      if (creds.is_configured && signature) {
+        const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || creds.key_secret;
+        const expectedSig = crypto
+          .createHmac('sha256', webhookSecret)
+          .update(rawBody)
+          .digest('hex');
+        if (expectedSig !== signature) {
+          console.error('[Razorpay Webhook] Signature mismatch!');
+          return res.status(400).send('Signature mismatch');
+        }
+      }
+
+      const event = req.body?.event;
+      const payment = req.body?.payload?.payment?.entity;
+
+      if (event === 'payment.captured' && payment) {
+        const rzpOrderId = payment.order_id;
+        const rzpPayId = payment.id;
+        if (rzpOrderId && rzpPayId) {
+          await pgDb.markRazorpayOrderPaid({
+            razorpay_order_id: rzpOrderId,
+            razorpay_payment_id: rzpPayId,
+            template_id: payment.notes?.template_id || '',
+            user_id: payment.notes?.user_id || '',
+            customer_name: payment.notes?.customer_name || payment.email?.split('@')[0] || '',
+            customer_email: payment.email || payment.notes?.customer_email || ''
+          });
+          console.log(`[Razorpay Webhook] Payment captured: ${rzpPayId} for order ${rzpOrderId}`);
+        }
+      }
+
+      res.status(200).send('OK');
+    } catch (error: any) {
+      console.error('[Razorpay Webhook] Error:', error);
+      res.status(500).send('Internal Error');
+    }
+  });
+
+  // 3g. Single Order / Access Verification Lookup (by Order ID, Razorpay Order ID, or Payment ID)
   app.get('/api/orders/:id', async (req, res) => {
     try {
       const orderId = req.params.id;
@@ -628,53 +655,8 @@ async function startServer() {
         }
       }
 
-      // 2. Active Reconciliation with Instamojo for any pending orders
-      // (Guarantees safety if user's internet dropped after payment before redirecting)
-      const creds = pgDb.getInstamojoCredentials();
-      if (creds.is_configured) {
-        try {
-          const pendingOrders = await pgDb.getPendingInstamojoOrders(userId, email);
-          if (pendingOrders.length > 0) {
-            const baseUrl = creds.sandbox 
-              ? 'https://test.instamojo.com/api/1.1/' 
-              : 'https://www.instamojo.com/api/1.1/';
-
-            for (const pOrder of pendingOrders) {
-              const reqId = pOrder.instamojo_payment_request_id || pOrder.payment_reference;
-              if (!reqId) continue;
-
-              try {
-                const checkRes = await fetch(`${baseUrl}payment-requests/${encodeURIComponent(reqId)}/`, {
-                  headers: {
-                    'X-Api-Key': creds.api_key,
-                    'X-Auth-Token': creds.auth_token
-                  }
-                });
-                if (checkRes.ok) {
-                  const checkData = await checkRes.json().catch(() => ({}));
-                  if (checkData.success && checkData.payment_request) {
-                    const reqInfo = checkData.payment_request;
-                    const successfulPayment = reqInfo.payments?.find((p: any) => p.status === 'Credit');
-                    if (reqInfo.status === 'Completed' || successfulPayment) {
-                      await pgDb.markInstamojoOrderPaid({
-                        payment_request_id: reqId,
-                        payment_id: successfulPayment?.payment_id || `MOJO_RECON_${Date.now()}`
-                      });
-                      console.log(`[Auto-Reconciliation] Recovered order ${pOrder.id} for ${email || userId}`);
-                    }
-                  }
-                }
-              } catch (recErr) {
-                console.warn('[Reconciliation Notice] Failed to check status for request:', reqId, recErr);
-              }
-            }
-          }
-        } catch (reconcileErr) {
-          console.warn('[Reconciliation Error]', reconcileErr);
-        }
-      }
-
       const orders = await pgDb.getUserOrders(userId, email);
+
       res.json({ success: true, purchases: orders });
     } catch (error) {
       console.error('Error fetching user purchases:', error);

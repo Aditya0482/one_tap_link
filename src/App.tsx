@@ -257,7 +257,7 @@ export const App: React.FC = () => {
               setCompletedOrder(order);
               try {
                 const purchaseRecord = {
-                  id: order.instamojo_payment_id || order.payment_reference || order.id,
+                  id: order.razorpay_payment_id || order.payment_reference || order.id,
                   userId: order.user_id || 'guest-checkout',
                   userEmail: order.customer_email,
                   customerEmail: order.customer_email,
@@ -267,14 +267,15 @@ export const App: React.FC = () => {
                   productName: order.template_title,
                   amount: order.amount,
                   currency: order.currency || 'INR',
-                  paymentGateway: 'instamojo',
-                  instamojoPaymentRequestId: order.instamojo_payment_request_id,
-                  instamojoPaymentId: order.instamojo_payment_id,
+                  paymentGateway: order.payment_gateway || 'razorpay',
+                  razorpayOrderId: order.razorpay_order_id,
+                  razorpayPaymentId: order.razorpay_payment_id,
                   paymentStatus: 'paid' as const,
                   purchasedAt: order.created_at || new Date().toISOString(),
                   accessUrl: order.access_url,
                   thumbnailUrl: order.template_thumbnail
                 };
+
                 const stored = JSON.parse(localStorage.getItem('onetaplink_customer_purchases') || '[]');
                 const filtered = stored.filter((p: any) => p.productId !== order.template_id && p.id !== purchaseRecord.id);
                 localStorage.setItem('onetaplink_customer_purchases', JSON.stringify([purchaseRecord, ...filtered]));
@@ -576,7 +577,7 @@ export const App: React.FC = () => {
               ) : (
                 <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center bg-[#F8FAFC]">
                   <Loader2 className="w-10 h-10 animate-spin text-[#10B981] mb-4" />
-                  <h3 className="text-lg font-bold text-[#111827]">Retrieving your Instamojo Order...</h3>
+                  <h3 className="text-lg font-bold text-[#111827]">Retrieving your Razorpay Order...</h3>
                   <p className="text-sm text-[#64748B] mt-1 max-w-sm">
                     Please wait while we verify your purchase and unlock your digital template.
                   </p>

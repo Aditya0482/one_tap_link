@@ -14,9 +14,10 @@ import {
   Wallet
 } from 'lucide-react';
 import { Template, Order, User, PurchaseRecord } from '../types';
-import { initiateInstamojoPayment } from '../utils/instamojo';
+import { initiateRazorpayPayment } from '../utils/razorpay';
 import { api } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
+import { validateName, validateEmail, validatePhone } from '../utils/validators';
 
 interface CheckoutProps {
   template: Template;
@@ -48,6 +49,31 @@ export const Checkout: React.FC<CheckoutProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isAutoFilled, setIsAutoFilled] = useState(Boolean(savedProfile.phone || user?.phone));
+
+  // Field validation
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const validateCheckoutField = (field: string, val?: string) => {
+    let err = '';
+    if (field === 'name') {
+      err = validateName(val !== undefined ? val : name);
+    } else if (field === 'email') {
+      err = validateEmail(val !== undefined ? val : email);
+    } else if (field === 'phone') {
+      err = validatePhone(val !== undefined ? val : phone);
+    }
+    setFieldErrors(prev => ({ ...prev, [field]: err }));
+    return err;
+  };
+
+  const handleCheckoutBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    validateCheckoutField(field);
+    if (field === 'email') {
+      handleEmailBlur();
+    }
+  };
 
   // 2. Fetch authoritative previous order details (Name, Phone, Email) from Database
   useEffect(() => {
@@ -104,7 +130,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
 
   const displayPrice = template.sale_price ?? template.price;
 
-  const handleInstamojoPayment = async (e: React.FormEvent) => {
+  const handleRazorpayPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -116,22 +142,19 @@ export const Checkout: React.FC<CheckoutProps> = ({
       return;
     }
 
-    if (!name.trim()) {
-      setErrorMsg('Please enter your full name to proceed with your order.');
-      return;
-    }
+    const nameErr = validateName(name);
+    const emailErr = validateEmail(email);
+    const phoneErr = validatePhone(phone);
 
-    if (!email.trim() || !email.includes('@')) {
-      setErrorMsg('Please provide a valid email address so we can deliver your template copy link.');
+    setTouched({ name: true, email: true, phone: true });
+    setFieldErrors({ name: nameErr, email: emailErr, phone: phoneErr });
+
+    if (nameErr || emailErr || phoneErr) {
+      setErrorMsg(nameErr || emailErr || phoneErr || 'Please resolve all required fields.');
       return;
     }
 
     const cleanPhone = phone.trim().replace(/[^0-9]/g, '');
-    if (!cleanPhone || cleanPhone.length < 10) {
-      setErrorMsg('Please provide a valid 10-digit mobile number for order confirmation.');
-      return;
-    }
-
     setIsLoading(true);
 
     // Save customer details so they automatically prefill on any subsequent purchases
@@ -146,7 +169,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
     }
 
     try {
-      await initiateInstamojoPayment({
+      await initiateRazorpayPayment({
         template,
         user: {
           uid: user?.uid || 'guest-checkout',
@@ -156,10 +179,10 @@ export const Checkout: React.FC<CheckoutProps> = ({
         },
         onSuccess: async (verifyResult) => {
           try {
-            const currentPaymentId = verifyResult.purchase?.instamojoPaymentId || 
-                                     verifyResult.purchase?.paymentId || 
-                                     verifyResult.order?.instamojo_payment_id || 
-                                     verifyResult.order?.payment_reference || 
+            const currentPaymentId = verifyResult.purchase?.razorpayPaymentId ||
+                                     verifyResult.purchase?.paymentId ||
+                                     verifyResult.order?.razorpay_payment_id ||
+                                     verifyResult.order?.payment_reference ||
                                      `pay_${Date.now()}`;
 
             const purchaseRecord = {
@@ -173,9 +196,9 @@ export const Checkout: React.FC<CheckoutProps> = ({
               productName: template.title,
               amount: template.sale_price ?? template.price,
               currency: 'INR',
-              paymentGateway: 'instamojo',
-              instamojoPaymentRequestId: verifyResult.purchase?.paymentRequestId || verifyResult.order?.instamojo_payment_request_id,
-              instamojoPaymentId: verifyResult.purchase?.paymentId || verifyResult.order?.instamojo_payment_id || currentPaymentId,
+              paymentGateway: 'razorpay',
+              razorpayOrderId: verifyResult.purchase?.razorpayOrderId || verifyResult.order?.razorpay_order_id,
+              razorpayPaymentId: verifyResult.purchase?.razorpayPaymentId || verifyResult.order?.razorpay_payment_id || currentPaymentId,
               paymentStatus: 'paid' as const,
               purchasedAt: new Date().toISOString(),
               accessUrl: template.access_url,
@@ -186,13 +209,13 @@ export const Checkout: React.FC<CheckoutProps> = ({
             // 1. Instant local caching with deduplication for immediate display in My Purchases
             try {
               const stored: PurchaseRecord[] = JSON.parse(localStorage.getItem('onetaplink_customer_purchases') || '[]');
-              const payId = purchaseRecord.instamojoPaymentId;
-              const reqId = purchaseRecord.instamojoPaymentRequestId;
+              const payId = purchaseRecord.razorpayPaymentId;
+              const ordId = purchaseRecord.razorpayOrderId;
               const prodId = purchaseRecord.productId;
 
               const filtered = stored.filter((p: PurchaseRecord) => {
-                if (payId && p.instamojoPaymentId === payId) return false;
-                if (reqId && p.instamojoPaymentRequestId === reqId) return false;
+                if (payId && p.razorpayPaymentId === payId) return false;
+                if (ordId && p.razorpayOrderId === ordId) return false;
                 if (prodId && p.productId === prodId) return false;
                 return true;
               });
@@ -224,6 +247,8 @@ export const Checkout: React.FC<CheckoutProps> = ({
     }
   };
 
+
+
   return (
     <div id="checkout-page" className="min-h-screen bg-[#F8FAFC] py-10 sm:py-16">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -241,7 +266,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
-          {/* Left: Customer Info & Instamojo Payment */}
+          {/* Left: Customer Info & Razorpay Payment */}
           <div className="md:col-span-7 bg-white p-6 sm:p-8 rounded-2xl border border-[#E2E8F0] shadow-sm">
             <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-4 mb-6">
               <div>
@@ -249,7 +274,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
                   Express Checkout
                 </h1>
                 <p className="text-xs text-[#64748B] mt-0.5">
-                  Powered by Instamojo Secure Payments
+                  Powered by Razorpay Secure Payments
                 </p>
               </div>
               <div className="flex items-center gap-1.5 text-xs font-semibold text-[#22C55E]">
@@ -299,7 +324,8 @@ export const Checkout: React.FC<CheckoutProps> = ({
               </div>
             )}
 
-            <form onSubmit={handleInstamojoPayment} className="space-y-5">
+            <form onSubmit={handleRazorpayPayment} className="space-y-5">
+
               {/* 1. Customer Information */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -323,10 +349,21 @@ export const Checkout: React.FC<CheckoutProps> = ({
                       type="text"
                       required
                       value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      onChange={(e) => {
+                        setName(e.target.value);
+                        if (touched.name) validateCheckoutField('name', e.target.value);
+                      }}
+                      onBlur={() => handleCheckoutBlur('name')}
                       placeholder="e.g. Jane Doe"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2E8F0] text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent bg-[#F8FAFC]"
+                      className={`w-full px-3.5 py-2.5 rounded-xl border ${
+                        touched.name && fieldErrors.name
+                          ? 'border-red-500 ring-2 ring-red-500/20'
+                          : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent'
+                      } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC]`}
                     />
+                    {touched.name && fieldErrors.name && (
+                      <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.name}</p>
+                    )}
                   </div>
 
                   <div>
@@ -338,11 +375,21 @@ export const Checkout: React.FC<CheckoutProps> = ({
                       type="email"
                       required
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      onBlur={handleEmailBlur}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (touched.email) validateCheckoutField('email', e.target.value);
+                      }}
+                      onBlur={() => handleCheckoutBlur('email')}
                       placeholder="jane@example.com"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2E8F0] text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent bg-[#F8FAFC]"
+                      className={`w-full px-3.5 py-2.5 rounded-xl border ${
+                        touched.email && fieldErrors.email
+                          ? 'border-red-500 ring-2 ring-red-500/20'
+                          : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent'
+                      } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC]`}
                     />
+                    {touched.email && fieldErrors.email && (
+                      <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.email}</p>
+                    )}
                   </div>
 
                   <div>
@@ -354,10 +401,21 @@ export const Checkout: React.FC<CheckoutProps> = ({
                       type="tel"
                       required
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => {
+                        setPhone(e.target.value);
+                        if (touched.phone) validateCheckoutField('phone', e.target.value);
+                      }}
+                      onBlur={() => handleCheckoutBlur('phone')}
                       placeholder="e.g. 9876543210"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2E8F0] text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent bg-[#F8FAFC]"
+                      className={`w-full px-3.5 py-2.5 rounded-xl border ${
+                        touched.phone && fieldErrors.phone
+                          ? 'border-red-500 ring-2 ring-red-500/20'
+                          : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent'
+                      } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC]`}
                     />
+                    {touched.phone && fieldErrors.phone && (
+                      <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.phone}</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -366,7 +424,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
               <div className="pt-4 border-t border-[#E2E8F0]">
                 <div className="flex items-center justify-between mb-3">
                   <label className="text-xs font-bold uppercase tracking-wider text-[#64748B]">
-                    2. Payment Methods (Instamojo)
+                    2. Payment Methods (Razorpay)
                   </label>
                   <span className="flex items-center gap-1 text-[11px] text-[#64748B]">
                     <Lock className="w-3 h-3 text-[#6D5DFB]" />
@@ -374,7 +432,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
                   </span>
                 </div>
 
-                {/* Instamojo Supported Payment Highlights */}
+                {/* Razorpay Supported Payment Highlights */}
                 <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
                     <div className="p-2.5 rounded-lg bg-white border border-[#E2E8F0] flex flex-col items-center justify-center gap-1">
@@ -403,7 +461,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
                   </div>
 
                   <p className="text-[11px] text-[#64748B] text-center pt-1">
-                    Clicking the button below connects to Instamojo where you can pay securely via UPI, Card, Net Banking, or Wallet.
+                    A secure Razorpay payment popup will open. Pay via UPI, Card, Net Banking, or Wallet.
                   </p>
                 </div>
               </div>
@@ -418,7 +476,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
                 {isLoading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Connecting to Instamojo...</span>
+                    <span>Connecting to Razorpay...</span>
                   </>
                 ) : (
                   <span>Pay Now — ₹{displayPrice}</span>
@@ -428,9 +486,10 @@ export const Checkout: React.FC<CheckoutProps> = ({
               {/* Small Trust Text */}
               <div className="text-center text-xs font-medium text-[#64748B] flex items-center justify-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-[#22C55E]" />
-                <span>Verified Instamojo Gateway • Instant Digital Delivery</span>
+                <span>Verified Razorpay Gateway • Instant Digital Delivery</span>
               </div>
             </form>
+
           </div>
 
           {/* Right: Order Summary */}

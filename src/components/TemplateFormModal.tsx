@@ -19,6 +19,7 @@ import {
 import { Template, TemplateFAQ, TemplateStatus } from '../types';
 import { api } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
+import { validateRequired, validateSlug, validatePrice, validateSalePrice, validateUrl } from '../utils/validators';
 
 interface TemplateFormModalProps {
   initialTemplate?: Template | null;
@@ -80,6 +81,41 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Field validation
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const validateTemplateField = (field: string, val?: string) => {
+    let err = '';
+    if (field === 'title') {
+      err = validateRequired(val !== undefined ? val : title, 'Template Name');
+      if (!err && (val !== undefined ? val : title).trim().length < 3) {
+        err = 'Template title must be at least 3 characters.';
+      }
+    } else if (field === 'slug') {
+      const s = val !== undefined ? val : slug;
+      if (s.trim()) err = validateSlug(s);
+    } else if (field === 'description') {
+      err = validateRequired(val !== undefined ? val : description, 'Description');
+      if (!err && (val !== undefined ? val : description).trim().length < 10) {
+        err = 'Description should be at least 10 characters.';
+      }
+    } else if (field === 'price') {
+      err = validatePrice(val !== undefined ? val : price);
+    } else if (field === 'salePrice') {
+      err = validateSalePrice(val !== undefined ? val : salePrice, price);
+    } else if (field === 'accessUrl') {
+      err = validateUrl(val !== undefined ? val : accessUrl, 'Deliverable URL', true);
+    }
+    setFieldErrors(prev => ({ ...prev, [field]: err }));
+    return err;
+  };
+
+  const handleTemplateBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    validateTemplateField(field);
+  };
 
   // Permanent Cloud Image Processing Helper
   const processImageFile = async (file: File): Promise<string> => {
@@ -213,16 +249,34 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
 
   const handleSubmit = async (targetStatus: TemplateStatus) => {
     setErrorMsg('');
-    if (!title.trim()) {
-      setErrorMsg('Please enter a template title.');
-      return;
-    }
-    if (!description.trim()) {
-      setErrorMsg('Please enter a comprehensive description for this template.');
-      return;
-    }
-    if (!accessUrl.trim()) {
-      setErrorMsg('Please provide the template access or Google Drive copy URL.');
+
+    const titleErr = validateRequired(title, 'Template Name') || (title.trim().length < 3 ? 'Template title must be at least 3 characters.' : '');
+    const descErr = validateRequired(description, 'Description') || (description.trim().length < 10 ? 'Description should be at least 10 characters.' : '');
+    const accessErr = validateUrl(accessUrl, 'Deliverable URL', true);
+    const priceErr = validatePrice(price);
+    const saleErr = validateSalePrice(salePrice, price);
+    const slugErr = slug.trim() ? validateSlug(slug) : '';
+
+    const errors: Record<string, string> = {};
+    if (titleErr) errors.title = titleErr;
+    if (descErr) errors.description = descErr;
+    if (accessErr) errors.accessUrl = accessErr;
+    if (priceErr) errors.price = priceErr;
+    if (saleErr) errors.salePrice = saleErr;
+    if (slugErr) errors.slug = slugErr;
+
+    setTouched({
+      title: true,
+      description: true,
+      accessUrl: true,
+      price: true,
+      salePrice: true,
+      slug: true
+    });
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setErrorMsg(Object.values(errors)[0] || 'Please fix the highlighted errors before saving.');
       return;
     }
 
@@ -318,13 +372,22 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                   value={title}
                   onChange={(e) => {
                     setTitle(e.target.value);
+                    if (touched.title) validateTemplateField('title', e.target.value);
                     if (!isEditing) {
                       setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
                     }
                   }}
+                  onBlur={() => handleTemplateBlur('title')}
                   placeholder="Enter template name (e.g. Master Budget & Wealth Planner)"
-                  className="w-full px-3 py-2 rounded-xl border border-[#E2E8F0] text-xs focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC] placeholder:text-[#94A3B8]"
+                  className={`w-full px-3 py-2 rounded-xl border ${
+                    touched.title && fieldErrors.title
+                      ? 'border-red-500 ring-2 ring-red-500/20'
+                      : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
+                  } text-xs bg-[#F8FAFC] placeholder:text-[#94A3B8]`}
                 />
+                {touched.title && fieldErrors.title && (
+                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.title}</p>
+                )}
               </div>
 
               <div>
@@ -353,10 +416,21 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
               <input
                 type="text"
                 value={slug}
-                onChange={(e) => setSlug(e.target.value)}
+                onChange={(e) => {
+                  setSlug(e.target.value);
+                  if (touched.slug) validateTemplateField('slug', e.target.value);
+                }}
+                onBlur={() => handleTemplateBlur('slug')}
                 placeholder="e.g. master-budget-planner (optional, auto-generated)"
-                className="w-full px-3 py-2 rounded-xl border border-[#E2E8F0] text-xs font-mono focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC] placeholder:text-[#94A3B8]"
+                className={`w-full px-3 py-2 rounded-xl border ${
+                  touched.slug && fieldErrors.slug
+                    ? 'border-red-500 ring-2 ring-red-500/20'
+                    : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
+                } text-xs font-mono bg-[#F8FAFC] placeholder:text-[#94A3B8]`}
               />
+              {touched.slug && fieldErrors.slug && (
+                <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.slug}</p>
+              )}
             </div>
 
             <div>
@@ -366,10 +440,21 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
               <textarea
                 rows={2}
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Enter a concise summary of what this template helps customers achieve..."
-                className="w-full px-3 py-2 rounded-xl border border-[#E2E8F0] text-xs focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC] placeholder:text-[#94A3B8]"
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  if (touched.description) validateTemplateField('description', e.target.value);
+                }}
+                onBlur={() => handleTemplateBlur('description')}
+                placeholder="Enter a concise summary of what this template helps customers achieve (minimum 10 characters)..."
+                className={`w-full px-3 py-2 rounded-xl border ${
+                  touched.description && fieldErrors.description
+                    ? 'border-red-500 ring-2 ring-red-500/20'
+                    : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
+                } text-xs bg-[#F8FAFC] placeholder:text-[#94A3B8]`}
               />
+              {touched.description && fieldErrors.description && (
+                <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.description}</p>
+              )}
             </div>
           </div>
 
@@ -404,13 +489,25 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                   min="0"
                   step="1"
                   value={price}
-                  onChange={(e) => setPrice(e.target.value)}
+                  onChange={(e) => {
+                    setPrice(e.target.value);
+                    if (touched.price) validateTemplateField('price', e.target.value);
+                  }}
+                  onBlur={() => handleTemplateBlur('price')}
                   placeholder="e.g. 499"
-                  className="w-full px-3 py-2 rounded-xl border border-[#E2E8F0] text-xs font-mono focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC] placeholder:text-[#94A3B8]"
+                  className={`w-full px-3 py-2 rounded-xl border ${
+                    touched.price && fieldErrors.price
+                      ? 'border-red-500 ring-2 ring-red-500/20'
+                      : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
+                  } text-xs font-mono bg-[#F8FAFC] placeholder:text-[#94A3B8]`}
                 />
-                <p className="text-[10px] text-[#64748B] mt-1">
-                  Customer will pay this exact amount at checkout.
-                </p>
+                {touched.price && fieldErrors.price ? (
+                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.price}</p>
+                ) : (
+                  <p className="text-[10px] text-[#64748B] mt-1">
+                    Customer will pay this exact amount at checkout.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -440,13 +537,25 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                   min="0"
                   step="1"
                   value={salePrice}
-                  onChange={(e) => setSalePrice(e.target.value)}
+                  onChange={(e) => {
+                    setSalePrice(e.target.value);
+                    if (touched.salePrice) validateTemplateField('salePrice', e.target.value);
+                  }}
+                  onBlur={() => handleTemplateBlur('salePrice')}
                   placeholder="e.g. 299"
-                  className="w-full px-3 py-2 rounded-xl border border-[#E2E8F0] text-xs font-mono focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC] placeholder:text-[#94A3B8]"
+                  className={`w-full px-3 py-2 rounded-xl border ${
+                    touched.salePrice && fieldErrors.salePrice
+                      ? 'border-red-500 ring-2 ring-red-500/20'
+                      : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
+                  } text-xs font-mono bg-[#F8FAFC] placeholder:text-[#94A3B8]`}
                 />
-                <p className="text-[10px] text-[#64748B] mt-1">
-                  Temporary promotional price (optional).
-                </p>
+                {touched.salePrice && fieldErrors.salePrice ? (
+                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.salePrice}</p>
+                ) : (
+                  <p className="text-[10px] text-[#64748B] mt-1">
+                    Temporary promotional price (optional).
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -593,13 +702,25 @@ export const TemplateFormModal: React.FC<TemplateFormModalProps> = ({
                 type="url"
                 required
                 value={accessUrl}
-                onChange={(e) => setAccessUrl(e.target.value)}
-                placeholder="Enter deliverable URL (e.g. Drive folder, GitHub repo, or download link)"
-                className="w-full px-3 py-2 rounded-xl border border-[#E2E8F0] text-xs font-mono focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC] placeholder:text-[#94A3B8]"
+                onChange={(e) => {
+                  setAccessUrl(e.target.value);
+                  if (touched.accessUrl) validateTemplateField('accessUrl', e.target.value);
+                }}
+                onBlur={() => handleTemplateBlur('accessUrl')}
+                placeholder="Enter deliverable URL (e.g. https://drive.google.com/... or https://github.com/...)"
+                className={`w-full px-3 py-2 rounded-xl border ${
+                  touched.accessUrl && fieldErrors.accessUrl
+                    ? 'border-red-500 ring-2 ring-red-500/20'
+                    : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
+                } text-xs font-mono bg-[#F8FAFC] placeholder:text-[#94A3B8]`}
               />
-              <p className="text-[11px] text-[#64748B] mt-1">
-                This URL is strictly protected on the backend and only delivered after verified payment.
-              </p>
+              {touched.accessUrl && fieldErrors.accessUrl ? (
+                <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.accessUrl}</p>
+              ) : (
+                <p className="text-[11px] text-[#64748B] mt-1">
+                  This URL is strictly protected on the backend and only delivered after verified payment.
+                </p>
+              )}
             </div>
           </div>
 

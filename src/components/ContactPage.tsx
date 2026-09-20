@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
+import { validateName, validateEmail, validateMessage, validateRequired } from '../utils/validators';
 
 interface ContactPageProps {
   onNavigate: (view: any) => void;
@@ -30,33 +31,41 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Field validation states (subtle inline red labels only, no attention banners)
+  // Field validation states
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const validateContactField = (field: string, val?: string) => {
+    let err = '';
+    if (field === 'name') err = validateName(val !== undefined ? val : formData.name);
+    else if (field === 'email') err = validateEmail(val !== undefined ? val : formData.email);
+    else if (field === 'category') err = validateRequired(val !== undefined ? val : formData.category, 'Inquiry category');
+    else if (field === 'message') err = validateMessage(val !== undefined ? val : formData.message, 10, 2000);
+    setFieldErrors(prev => ({ ...prev, [field]: err }));
+    return err;
+  };
+
+  const handleContactBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    validateContactField(field);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
 
+    const nameErr = validateName(formData.name);
+    const emailErr = validateEmail(formData.email);
+    const categoryErr = validateRequired(formData.category, 'Inquiry category');
+    const messageErr = validateMessage(formData.message, 10, 2000);
+
     const errors: Record<string, string> = {};
+    if (nameErr) errors.name = nameErr;
+    if (emailErr) errors.email = emailErr;
+    if (categoryErr) errors.category = categoryErr;
+    if (messageErr) errors.message = messageErr;
 
-    if (!formData.name.trim()) {
-      errors.name = 'Please provide your full name.';
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!formData.email.trim()) {
-      errors.email = 'Please provide your email address.';
-    } else if (!emailRegex.test(formData.email.trim())) {
-      errors.email = 'Please provide a valid email format (e.g. name@example.com).';
-    }
-
-    if (!formData.category.trim()) {
-      errors.category = 'Please select an inquiry category.';
-    }
-
-    if (!formData.message.trim()) {
-      errors.message = 'Please provide your message.';
-    }
+    setTouched({ name: true, email: true, category: true, message: true });
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -251,16 +260,17 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
                           value={formData.name}
                           onChange={(e) => {
                             setFormData({ ...formData, name: e.target.value });
-                            if (fieldErrors.name) setFieldErrors({ ...fieldErrors, name: '' });
+                            if (touched.name) validateContactField('name', e.target.value);
                           }}
+                          onBlur={() => handleContactBlur('name')}
                           placeholder="e.g. Rahul Sharma"
                           className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-all ${
-                            fieldErrors.name
+                            touched.name && fieldErrors.name
                               ? 'border-rose-400 ring-2 ring-rose-200 bg-rose-50/40 text-[#111827]'
                               : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC]'
                           }`}
                         />
-                        {fieldErrors.name && (
+                        {touched.name && fieldErrors.name && (
                           <p className="text-[11px] font-semibold text-rose-600 mt-1 flex items-center gap-1">
                             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                             {fieldErrors.name}
@@ -277,16 +287,17 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
                           value={formData.email}
                           onChange={(e) => {
                             setFormData({ ...formData, email: e.target.value });
-                            if (fieldErrors.email) setFieldErrors({ ...fieldErrors, email: '' });
+                            if (touched.email) validateContactField('email', e.target.value);
                           }}
+                          onBlur={() => handleContactBlur('email')}
                           placeholder="e.g. rahul@example.com"
                           className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-all ${
-                            fieldErrors.email
+                            touched.email && fieldErrors.email
                               ? 'border-rose-400 ring-2 ring-rose-200 bg-rose-50/40 text-[#111827]'
                               : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC]'
                           }`}
                         />
-                        {fieldErrors.email && (
+                        {touched.email && fieldErrors.email && (
                           <p className="text-[11px] font-semibold text-rose-600 mt-1 flex items-center gap-1">
                             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                             {fieldErrors.email}
@@ -305,10 +316,11 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
                           value={formData.category}
                           onChange={(e) => {
                             setFormData({ ...formData, category: e.target.value });
-                            if (fieldErrors.category) setFieldErrors({ ...fieldErrors, category: '' });
+                            if (touched.category) validateContactField('category', e.target.value);
                           }}
+                          onBlur={() => handleContactBlur('category')}
                           className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-all cursor-pointer ${
-                            fieldErrors.category
+                            touched.category && fieldErrors.category
                               ? 'border-rose-400 ring-2 ring-rose-200 bg-rose-50/40 text-[#111827]'
                               : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC]'
                           }`}
@@ -321,7 +333,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
                           <option value="Business Partnership">Business Partnership</option>
                           <option value="Feature Suggestion">Feature Suggestion</option>
                         </select>
-                        {fieldErrors.category && (
+                        {touched.category && fieldErrors.category && (
                           <p className="text-[11px] font-semibold text-rose-600 mt-1 flex items-center gap-1">
                             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                             {fieldErrors.category}
@@ -365,16 +377,17 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
                         value={formData.message}
                         onChange={(e) => {
                           setFormData({ ...formData, message: e.target.value });
-                          if (fieldErrors.message) setFieldErrors({ ...fieldErrors, message: '' });
+                          if (touched.message) validateContactField('message', e.target.value);
                         }}
-                        placeholder="Please describe your question or requirement in detail..."
+                        onBlur={() => handleContactBlur('message')}
+                        placeholder="Please describe your question or requirement in detail (minimum 10 characters)..."
                         className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none transition-all resize-none ${
-                          fieldErrors.message
+                          touched.message && fieldErrors.message
                             ? 'border-rose-400 ring-2 ring-rose-200 bg-rose-50/40 text-[#111827]'
                             : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC]'
                         }`}
                       />
-                      {fieldErrors.message && (
+                      {touched.message && fieldErrors.message && (
                         <p className="text-[11px] font-semibold text-rose-600 mt-1 flex items-center gap-1">
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                           {fieldErrors.message}

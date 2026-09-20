@@ -129,7 +129,7 @@ export class DatabaseService {
             payment_status VARCHAR(50) DEFAULT 'Pending',
             access_status VARCHAR(50) DEFAULT 'Pending',
             payment_reference VARCHAR(255),
-            payment_gateway VARCHAR(50) DEFAULT 'instamojo',
+            payment_gateway VARCHAR(50) DEFAULT 'razorpay',
             customer_phone VARCHAR(50),
             instamojo_payment_request_id VARCHAR(255),
             instamojo_payment_id VARCHAR(255),
@@ -144,14 +144,15 @@ export class DatabaseService {
         // Automated schema migrations for existing orders table
         await client.query(`
           ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(50);
-          ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_gateway VARCHAR(50) DEFAULT 'instamojo';
-          ALTER TABLE orders ADD COLUMN IF NOT EXISTS instamojo_payment_request_id VARCHAR(255);
-          ALTER TABLE orders ADD COLUMN IF NOT EXISTS instamojo_payment_id VARCHAR(255);
+          ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_gateway VARCHAR(50) DEFAULT 'razorpay';
+          ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_order_id VARCHAR(255);
+          ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(255);
           ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
           CREATE INDEX IF NOT EXISTS idx_orders_cust_email ON orders(customer_email);
-          CREATE INDEX IF NOT EXISTS idx_orders_instamojo_req ON orders(instamojo_payment_request_id);
-          CREATE INDEX IF NOT EXISTS idx_orders_instamojo_pay ON orders(instamojo_payment_id);
+          CREATE INDEX IF NOT EXISTS idx_orders_rzp_order ON orders(razorpay_order_id);
+          CREATE INDEX IF NOT EXISTS idx_orders_rzp_pay ON orders(razorpay_payment_id);
         `);
+
 
         // 5. Contact Inquiries table
         await client.query(`
@@ -716,288 +717,35 @@ export class DatabaseService {
   }
 
   // ==========================================
-  // ORDERS & PURCHASES (INSTAMOJO & POSTGRESQL)
+  // ORDERS & PURCHASES (RAZORPAY & POSTGRESQL)
   // ==========================================
-  public getInstamojoCredentials(): {
-    api_key: string;
-    auth_token: string;
-    salt: string;
+  public getRazorpayCredentials(): {
+    key_id: string;
+    key_secret: string;
     is_configured: boolean;
-    sandbox: boolean;
-    mode: 'live' | 'sandbox' | 'simulation';
+    test_mode: boolean;
+    mode: 'live' | 'test' | 'simulation';
   } {
-    const apiKey = (process.env.INSTAMOJO_API_KEY || '').trim();
-    const authToken = (process.env.INSTAMOJO_AUTH_TOKEN || '').trim();
-    const salt = (process.env.INSTAMOJO_SALT || '').trim();
-    const isSandbox = process.env.INSTAMOJO_SANDBOX === 'true';
-    const isSimulationMode = process.env.INSTAMOJO_TEST_SIMULATION === 'true';
+    const keyId = (process.env.RAZORPAY_KEY_ID || '').trim();
+    const keySecret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
+    const isTestMode = process.env.RAZORPAY_TEST_MODE !== 'false';
 
-    const isConfigured = Boolean(apiKey && authToken && !apiKey.includes('placeholder') && !isSimulationMode);
+    const isConfigured = Boolean(
+      keyId && keySecret &&
+      !keyId.includes('placeholder') &&
+      !keySecret.includes('placeholder')
+    );
 
     return {
-      api_key: apiKey,
-      auth_token: authToken,
-      salt,
+      key_id: keyId,
+      key_secret: keySecret,
       is_configured: isConfigured,
-      sandbox: isSandbox,
-      mode: isSimulationMode ? 'simulation' : (!isConfigured ? 'simulation' : (isSandbox ? 'sandbox' : 'live'))
+      test_mode: isTestMode,
+      mode: !isConfigured ? 'simulation' : (isTestMode ? 'test' : 'live')
     };
   }
 
-  public async createPendingInstamojoOrder(payload: {
-    customer_name: string;
-    customer_email: string;
-    customer_phone?: string;
-    user_id?: string;
-    template_id: string;
-    payment_request_id: string;
-  }): Promise<Order | null> {
-    const template = await this.getTemplateById(payload.template_id, true);
-    if (!template) return null;
 
-    const orderId = `ord_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    const now = new Date().toISOString();
-    const amount = template.sale_price ?? template.price;
-
-    const newOrder: Order = {
-      id: orderId,
-      customer_name: payload.customer_name.trim(),
-      customer_email: payload.customer_email.trim().toLowerCase(),
-      customer_phone: payload.customer_phone?.trim(),
-      user_id: payload.user_id || undefined,
-      template_id: template.id,
-      template_title: template.title,
-      template_thumbnail: template.thumbnail_url,
-      amount,
-      currency: 'INR',
-      payment_status: 'Pending',
-      access_status: 'Pending',
-      payment_reference: payload.payment_request_id,
-      payment_gateway: 'instamojo',
-      instamojo_payment_request_id: payload.payment_request_id,
-      created_at: now,
-      updated_at: now
-    };
-
-    if (this.isPostgres && this.pool) {
-      await this.pool.query(
-        `INSERT INTO orders (
-          id, customer_name, customer_email, customer_phone, user_id, template_id, template_title,
-          template_thumbnail, amount, currency, payment_status, access_status,
-          payment_reference, payment_gateway, instamojo_payment_request_id, access_url,
-          created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-        ON CONFLICT (id) DO NOTHING`,
-        [
-          newOrder.id,
-          newOrder.customer_name,
-          newOrder.customer_email,
-          newOrder.customer_phone || null,
-          newOrder.user_id || null,
-          newOrder.template_id,
-          newOrder.template_title || '',
-          newOrder.template_thumbnail || '',
-          newOrder.amount,
-          newOrder.currency,
-          newOrder.payment_status,
-          newOrder.access_status,
-          newOrder.payment_reference,
-          newOrder.payment_gateway,
-          newOrder.instamojo_payment_request_id,
-          null,
-          now,
-          now
-        ]
-      );
-    }
-
-    // Keep JSON store synchronized
-    if ((jsonDb as any).data?.orders) {
-      (jsonDb as any).data.orders.unshift(newOrder);
-      (jsonDb as any).save();
-    }
-
-    return newOrder;
-  }
-
-  public async markInstamojoOrderPaid(params: {
-    payment_request_id: string;
-    payment_id: string;
-    template_id?: string;
-    user_id?: string;
-    customer_name?: string;
-    customer_email?: string;
-    customer_phone?: string;
-  }): Promise<Order | null> {
-    const now = new Date().toISOString();
-
-    if (this.isPostgres && this.pool) {
-      // 1. Check if already marked paid for this payment ID
-      const existingPayRes = await this.pool.query(
-        `SELECT * FROM orders WHERE instamojo_payment_id = $1 OR payment_reference = $1`,
-        [params.payment_id]
-      );
-      if (existingPayRes.rows.length > 0 && existingPayRes.rows[0].payment_status === 'Paid') {
-        const row = existingPayRes.rows[0];
-        if (!row.access_url && row.template_id) {
-          const t = await this.getTemplateById(row.template_id, true);
-          if (t) row.access_url = t.access_url;
-        }
-        return this.mapOrderRow(row);
-      }
-
-      // 2. Find pending order by payment_request_id
-      const pendingRes = await this.pool.query(
-        `SELECT * FROM orders WHERE instamojo_payment_request_id = $1 OR id = $1 LIMIT 1`,
-        [params.payment_request_id]
-      );
-
-      let orderId: string;
-      let targetTemplateId: string = params.template_id || '';
-
-      if (pendingRes.rows.length > 0) {
-        const existingOrder = pendingRes.rows[0];
-        orderId = existingOrder.id;
-        targetTemplateId = existingOrder.template_id || targetTemplateId;
-        const template = await this.getTemplateById(targetTemplateId, true);
-
-        await this.pool.query(
-          `UPDATE orders SET
-            payment_status = 'Paid',
-            access_status = 'Granted',
-            payment_reference = $1,
-            payment_gateway = 'instamojo',
-            instamojo_payment_id = $1,
-            user_id = COALESCE(user_id, $2),
-            customer_name = COALESCE($3, customer_name),
-            customer_email = COALESCE($4, customer_email),
-            customer_phone = COALESCE($5, customer_phone),
-            access_url = $6,
-            updated_at = $7
-          WHERE id = $8`,
-          [
-            params.payment_id,
-            params.user_id || null,
-            params.customer_name?.trim() || null,
-            params.customer_email?.trim().toLowerCase() || null,
-            params.customer_phone?.trim() || null,
-            template?.access_url || null,
-            now,
-            orderId
-          ]
-        );
-      } else {
-        const template = await this.getTemplateById(targetTemplateId, true);
-        orderId = `ord_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-        await this.pool.query(
-          `INSERT INTO orders (
-            id, customer_name, customer_email, customer_phone, user_id, template_id, template_title,
-            template_thumbnail, amount, currency, payment_status, access_status,
-            payment_reference, payment_gateway, instamojo_payment_request_id, instamojo_payment_id, access_url,
-            created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
-          [
-            orderId,
-            (params.customer_name || 'Customer').trim(),
-            (params.customer_email || 'customer@example.com').trim().toLowerCase(),
-            params.customer_phone?.trim() || null,
-            params.user_id || null,
-            template?.id || targetTemplateId,
-            template?.title || '',
-            template?.thumbnail_url || '',
-            template ? (template.sale_price ?? template.price) : 0,
-            'INR',
-            'Paid',
-            'Granted',
-            params.payment_id,
-            'instamojo',
-            params.payment_request_id,
-            params.payment_id,
-            template?.access_url || null,
-            now,
-            now
-          ]
-        );
-      }
-
-      const finalRes = await this.pool.query('SELECT * FROM orders WHERE id = $1', [orderId]);
-      return this.mapOrderRow(finalRes.rows[0]);
-    }
-
-    // Local JSON fallback
-    const orders = (jsonDb as any).data?.orders || [];
-    let order = orders.find((o: any) => o.instamojo_payment_request_id === params.payment_request_id || o.id === params.payment_request_id);
-    const template = await this.getTemplateById(params.template_id || order?.template_id, true);
-
-    if (order) {
-      order.payment_status = 'Paid';
-      order.access_status = 'Granted';
-      order.payment_reference = params.payment_id;
-      order.payment_gateway = 'instamojo';
-      order.instamojo_payment_id = params.payment_id;
-      order.customer_phone = params.customer_phone || order.customer_phone;
-      order.access_url = template?.access_url;
-      order.updated_at = now;
-    } else {
-      order = {
-        id: `ord_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-        customer_name: params.customer_name || 'Customer',
-        customer_email: (params.customer_email || 'customer@example.com').toLowerCase(),
-        customer_phone: params.customer_phone,
-        user_id: params.user_id,
-        template_id: template?.id || '',
-        template_title: template?.title || '',
-        template_thumbnail: template?.thumbnail_url || '',
-        amount: template ? (template.sale_price ?? template.price) : 0,
-        currency: 'INR',
-        payment_status: 'Paid',
-        access_status: 'Granted',
-        payment_reference: params.payment_id,
-        payment_gateway: 'instamojo',
-        instamojo_payment_request_id: params.payment_request_id,
-        instamojo_payment_id: params.payment_id,
-        access_url: template?.access_url,
-        created_at: now,
-        updated_at: now
-      };
-      orders.unshift(order);
-    }
-    (jsonDb as any).save();
-    return order;
-  }
-
-  public async getPendingInstamojoOrders(userId?: string, email?: string): Promise<Order[]> {
-    const cleanEmail = email?.trim().toLowerCase();
-    const cleanUid = userId?.trim();
-
-    if (this.isPostgres && this.pool) {
-      let query = `SELECT * FROM orders WHERE payment_status = 'Pending' AND payment_gateway = 'instamojo' AND (`;
-      const params: any[] = [];
-      if (cleanUid && cleanUid !== 'guest-checkout' && cleanEmail) {
-        query += `user_id = $1 OR LOWER(customer_email) = $2)`;
-        params.push(cleanUid, cleanEmail);
-      } else if (cleanUid && cleanUid !== 'guest-checkout') {
-        query += `user_id = $1)`;
-        params.push(cleanUid);
-      } else if (cleanEmail) {
-        query += `LOWER(customer_email) = $1)`;
-        params.push(cleanEmail);
-      } else {
-        return [];
-      }
-      query += ` ORDER BY created_at DESC LIMIT 10`;
-      const res = await this.pool.query(query, params);
-      return res.rows.map(this.mapOrderRow);
-    }
-
-    const all = jsonDb.getAllOrders();
-    return all.filter((o: any) => {
-      if (o.payment_status !== 'Pending' || o.payment_gateway !== 'instamojo') return false;
-      if (cleanUid && cleanUid !== 'guest-checkout' && o.user_id === cleanUid) return true;
-      if (cleanEmail && o.customer_email?.toLowerCase() === cleanEmail) return true;
-      return false;
-    }).slice(0, 10);
-  }
 
   /**
    * Retrieves previous customer details (Name, Email, Mobile No) from past orders or user profile
@@ -1437,12 +1185,6 @@ export class DatabaseService {
     return jsonDb.deleteContactMessage(id);
   }
 
-  // ==========================================
-  // SETTINGS & RAZORPAY CONFIG
-  // ==========================================
-  public getRazorpayCredentials() {
-    return jsonDb.getRazorpayCredentials();
-  }
 
   // Row Mappers
   private mapTemplateRow(row: any): Template {

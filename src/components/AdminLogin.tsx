@@ -14,6 +14,7 @@ import {
 import { api } from '../services/api';
 import { OneTapLogo } from './OneTapLogo';
 import { ErrorAlert } from './ErrorAlert';
+import { validateEmail, validatePassword, validateOtp } from '../utils/validators';
 
 interface AdminLoginProps {
   onLoginSuccess: (token: string, admin: { id: string; email: string }) => void;
@@ -35,6 +36,26 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successNotice, setSuccessNotice] = useState('');
+
+  // Field errors and touched state
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const validateAdminField = (field: string, val?: string) => {
+    let err = '';
+    if (field === 'email') err = validateEmail(val !== undefined ? val : email);
+    else if (field === 'password') err = validatePassword(val !== undefined ? val : password, 'Password');
+    else if (field === 'forgotEmail') err = validateEmail(val !== undefined ? val : forgotEmail);
+    else if (field === 'otpCode') err = validateOtp(val !== undefined ? val : otpCode);
+    else if (field === 'newPassword') err = validatePassword(val !== undefined ? val : newPassword, 'New password');
+    setFieldErrors(prev => ({ ...prev, [field]: err }));
+    return err;
+  };
+
+  const handleAdminBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    validateAdminField(field);
+  };
 
   // Forgot password flow
   const [forgotEmail, setForgotEmail] = useState('');
@@ -77,6 +98,8 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
     setForgotError('');
     setForgotSuccess('');
     setResendCooldown(0);
+    setFieldErrors({});
+    setTouched({});
     if (timerRef.current) clearInterval(timerRef.current);
   };
 
@@ -86,13 +109,19 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
     setErrorMsg('');
     setSuccessNotice('');
 
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPassword = password.trim();
+    const emailErr = validateEmail(email);
+    const passErr = validatePassword(password, 'Password');
 
-    if (!cleanEmail || !cleanPassword) {
-      setErrorMsg('Please enter both your administrator email and password.');
+    setTouched({ email: true, password: true });
+    setFieldErrors({ email: emailErr, password: passErr });
+
+    if (emailErr || passErr) {
+      setErrorMsg(emailErr || passErr || 'Please check your email and password.');
       return;
     }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
 
     setIsLoading(true);
     try {
@@ -116,12 +145,16 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
     setForgotError('');
     setForgotSuccess('');
 
-    const cleanEmail = forgotEmail.trim().toLowerCase();
-    if (!cleanEmail) {
-      setForgotError('Please enter your admin email address.');
+    const emailErr = validateEmail(forgotEmail);
+    setTouched(prev => ({ ...prev, forgotEmail: true }));
+    setFieldErrors(prev => ({ ...prev, forgotEmail: emailErr }));
+
+    if (emailErr) {
+      setForgotError(emailErr);
       return;
     }
 
+    const cleanEmail = forgotEmail.trim().toLowerCase();
     setForgotLoading(true);
     try {
       const res = await api.sendPasswordResetOtp(cleanEmail);
@@ -129,6 +162,8 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
         setForgotSuccess('A 6-digit OTP has been sent to your email.');
         setStep('forgot-otp');
         startResendTimer();
+        setFieldErrors({});
+        setTouched({});
       } else {
         setForgotError(res.message || 'Failed to send OTP. Please try again.');
       }
@@ -166,8 +201,12 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
     setForgotError('');
     setForgotSuccess('');
 
-    if (!otpCode.trim() || otpCode.trim().length !== 6) {
-      setForgotError('Please enter the 6-digit OTP sent to your email.');
+    const otpErr = validateOtp(otpCode);
+    setTouched(prev => ({ ...prev, otpCode: true }));
+    setFieldErrors(prev => ({ ...prev, otpCode: otpErr }));
+
+    if (otpErr) {
+      setForgotError(otpErr);
       return;
     }
 
@@ -177,6 +216,8 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
       if (res.success) {
         setForgotSuccess('OTP verified! Set your new password below.');
         setStep('forgot-reset');
+        setFieldErrors({});
+        setTouched({});
       } else {
         setForgotError(res.message || 'Invalid or expired OTP.');
       }
@@ -193,12 +234,16 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
     setForgotError('');
     setForgotSuccess('');
 
-    const cleanPassword = newPassword.trim();
-    if (!cleanPassword || cleanPassword.length < 6) {
-      setForgotError('Password must be at least 6 characters long.');
+    const passErr = validatePassword(newPassword, 'New password');
+    setTouched(prev => ({ ...prev, newPassword: true }));
+    setFieldErrors(prev => ({ ...prev, newPassword: passErr }));
+
+    if (passErr) {
+      setForgotError(passErr);
       return;
     }
 
+    const cleanPassword = newPassword.trim();
     setForgotLoading(true);
     try {
       const res = await api.resetPasswordWithOtp(
@@ -285,11 +330,22 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                     required
                     autoComplete="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (touched.email) validateAdminField('email', e.target.value);
+                    }}
+                    onBlur={() => handleAdminBlur('email')}
                     placeholder="Enter your email"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-[#E2E8F0] text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC]"
+                    className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl border ${
+                      touched.email && fieldErrors.email
+                        ? 'border-red-500 ring-2 ring-red-500/20'
+                        : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
+                    } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC]`}
                   />
                 </div>
+                {touched.email && fieldErrors.email && (
+                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.email}</p>
+                )}
               </div>
 
               {/* Password */}
@@ -307,9 +363,17 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                     required
                     autoComplete="current-password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (touched.password) validateAdminField('password', e.target.value);
+                    }}
+                    onBlur={() => handleAdminBlur('password')}
                     placeholder="Enter Password"
-                    className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-[#E2E8F0] text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC]"
+                    className={`w-full pl-10 pr-10 py-2.5 rounded-xl border ${
+                      touched.password && fieldErrors.password
+                        ? 'border-red-500 ring-2 ring-red-500/20'
+                        : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
+                    } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC]`}
                   />
                   <button
                     type="button"
@@ -321,6 +385,9 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                     {showPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                   </button>
                 </div>
+                {touched.password && fieldErrors.password && (
+                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.password}</p>
+                )}
 
                 {/* Forgot Password link — red, below password, above login */}
                 <div className="mt-2 text-right">
@@ -406,11 +473,22 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                     required
                     autoComplete="email"
                     value={forgotEmail}
-                    onChange={(e) => setForgotEmail(e.target.value)}
+                    onChange={(e) => {
+                      setForgotEmail(e.target.value);
+                      if (touched.forgotEmail) validateAdminField('forgotEmail', e.target.value);
+                    }}
+                    onBlur={() => handleAdminBlur('forgotEmail')}
                     placeholder="Enter your admin email"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-[#E2E8F0] text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC]"
+                    className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl border ${
+                      touched.forgotEmail && fieldErrors.forgotEmail
+                        ? 'border-red-500 ring-2 ring-red-500/20'
+                        : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
+                    } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC]`}
                   />
                 </div>
+                {touched.forgotEmail && fieldErrors.forgotEmail && (
+                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.forgotEmail}</p>
+                )}
               </div>
 
               <div className="pt-1">
@@ -479,11 +557,23 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                     maxLength={6}
                     required
                     value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                      setOtpCode(val);
+                      if (touched.otpCode) validateAdminField('otpCode', val);
+                    }}
+                    onBlur={() => handleAdminBlur('otpCode')}
                     placeholder="Enter 6-digit code"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-[#E2E8F0] text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC] tracking-widest text-center font-mono"
+                    className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl border ${
+                      touched.otpCode && fieldErrors.otpCode
+                        ? 'border-red-500 ring-2 ring-red-500/20'
+                        : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
+                    } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC] tracking-widest text-center font-mono`}
                   />
                 </div>
+                {touched.otpCode && fieldErrors.otpCode && (
+                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.otpCode}</p>
+                )}
 
                 {/* Resend OTP Timer — red color */}
                 <div className="mt-2 flex items-center justify-center">
@@ -509,7 +599,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               <div className="pt-1">
                 <button
                   type="submit"
-                  disabled={forgotLoading || otpCode.length !== 6}
+                  disabled={forgotLoading}
                   className="w-full py-3 px-4 rounded-xl text-sm font-bold bg-[#111827] hover:bg-black text-white shadow-sm transition-all duration-150 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
                 >
                   {forgotLoading ? (
@@ -570,9 +660,17 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                   required
                   minLength={6}
                   value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
+                  onChange={(e) => {
+                    setNewPassword(e.target.value);
+                    if (touched.newPassword) validateAdminField('newPassword', e.target.value);
+                  }}
+                  onBlur={() => handleAdminBlur('newPassword')}
                   placeholder="Enter new password (min. 6 chars)"
-                  className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-[#E2E8F0] text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC]"
+                  className={`w-full pl-10 pr-10 py-2.5 rounded-xl border ${
+                    touched.newPassword && fieldErrors.newPassword
+                      ? 'border-red-500 ring-2 ring-red-500/20'
+                      : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
+                  } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC]`}
                 />
                 <button
                   type="button"
@@ -583,6 +681,9 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                   {showNewPassword ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                 </button>
               </div>
+              {touched.newPassword && fieldErrors.newPassword && (
+                <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.newPassword}</p>
+              )}
             </div>
 
             <div className="pt-1">

@@ -8,10 +8,10 @@ import {
   ContactMessage,
   AppSettings,
   User,
-  InstamojoConfigResponse,
-  InstamojoPaymentRequestResponse,
-  InstamojoVerifyResponse
+  RazorpayOrderResponse,
+  RazorpayVerifyResponse
 } from '../types';
+
 
 export const api = {
   // Public Storefront
@@ -47,9 +47,9 @@ export const api = {
     return data.order || data;
   },
 
-  // Instamojo Payments
-  async getInstamojoConfig(): Promise<InstamojoConfigResponse> {
-    const res = await fetch('/api/instamojo/config');
+  // Razorpay Payments
+  async getRazorpayConfig(): Promise<{ is_configured: boolean; key_id: string; test_mode: boolean; mode: string }> {
+    const res = await fetch('/api/razorpay/config');
     if (!res.ok) throw new Error('Failed to fetch payment configuration');
     return res.json();
   },
@@ -71,34 +71,56 @@ export const api = {
     }
   },
 
-  async createInstamojoPaymentRequest(payload: {
+  async createRazorpayOrder(payload: {
     template_id: string;
     customer_name?: string;
     customer_email?: string;
     customer_phone?: string;
     user_id?: string;
-  }): Promise<InstamojoPaymentRequestResponse> {
-    const res = await fetch('/api/instamojo/create-request', {
+  }): Promise<RazorpayOrderResponse> {
+    const res = await fetch('/api/razorpay/create-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json().catch(() => ({ error: 'Failed to create payment request' }));
+    const data = await res.json().catch(() => ({ error: 'Failed to create payment order' }));
     if (!res.ok) {
-      throw new Error(data.error || data.details || 'Failed to initialize Instamojo payment');
+      throw new Error(data.error || data.details || 'Failed to initialize Razorpay payment');
     }
     return data;
   },
 
-  async simulateInstamojoPayment(payload: {
-    payment_request_id: string;
+  async verifyRazorpayPayment(payload: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    template_id?: string;
+    user_id?: string;
+    customer_name?: string;
+    customer_email?: string;
+    customer_phone?: string;
+  }): Promise<RazorpayVerifyResponse> {
+    const res = await fetch('/api/razorpay/verify-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({ error: 'Payment verification failed' }));
+    if (!res.ok) {
+      throw new Error(data.error || 'Payment verification failed');
+    }
+    return data;
+  },
+
+  async simulateRazorpayPayment(payload: {
+    razorpay_order_id: string;
     template_id: string;
     customer_name?: string;
     customer_email?: string;
     customer_phone?: string;
     user_id?: string;
-  }): Promise<InstamojoVerifyResponse> {
-    const res = await fetch('/api/instamojo/simulate-payment', {
+  }): Promise<RazorpayVerifyResponse> {
+    const res = await fetch('/api/razorpay/simulate-payment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
