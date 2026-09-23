@@ -340,7 +340,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
               </div>
             )}
 
-            <form onSubmit={handleRazorpayPayment} className="space-y-5">
+            <form onSubmit={handleRazorpayPayment} className="space-y-5" noValidate>
 
               {/* 1. Customer Information */}
               <div>
@@ -357,13 +357,12 @@ export const Checkout: React.FC<CheckoutProps> = ({
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-[#111827] mb-1">
-                      Full Name
+                    <label className="block text-xs font-semibold text-[#111827] mb-1">
+                      Full Name <span className="text-red-500 font-bold">*</span>
                     </label>
                     <input
                       id="checkout-name-input"
                       type="text"
-                      required
                       value={name}
                       onChange={(e) => {
                         setName(e.target.value);
@@ -373,23 +372,25 @@ export const Checkout: React.FC<CheckoutProps> = ({
                       placeholder="e.g. Jane Doe"
                       className={`w-full px-3.5 py-2.5 rounded-xl border ${
                         touched.name && fieldErrors.name
-                          ? 'border-red-500 ring-2 ring-red-500/20'
-                          : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent'
-                      } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC]`}
+                          ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/20'
+                          : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent bg-[#F8FAFC]'
+                      } text-sm text-[#111827] focus:outline-none transition-all`}
                     />
                     {touched.name && fieldErrors.name && (
-                      <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.name}</p>
+                      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600 font-medium bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
+                        <span>{fieldErrors.name}</span>
+                      </div>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-[#111827] mb-1">
-                      Email Address (Where your Google Drive copy link will be delivered)
+                    <label className="block text-xs font-semibold text-[#111827] mb-1">
+                      Email Address <span className="text-red-500 font-bold">*</span> <span className="text-[#64748B] font-normal text-[11px]">(Where your Google Drive copy link will be delivered)</span>
                     </label>
                     <input
                       id="checkout-email-input"
                       type="email"
-                      required
                       value={email}
                       onChange={(e) => {
                         setEmail(e.target.value);
@@ -399,17 +400,20 @@ export const Checkout: React.FC<CheckoutProps> = ({
                       placeholder="jane@example.com"
                       className={`w-full px-3.5 py-2.5 rounded-xl border ${
                         touched.email && fieldErrors.email
-                          ? 'border-red-500 ring-2 ring-red-500/20'
-                          : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent'
-                      } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC]`}
+                          ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/20'
+                          : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent bg-[#F8FAFC]'
+                      } text-sm text-[#111827] focus:outline-none transition-all`}
                     />
                     {touched.email && fieldErrors.email && (
-                      <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.email}</p>
+                      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600 font-medium bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
+                        <span>{fieldErrors.email}</span>
+                      </div>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-[#111827] mb-1">
+                    <label className="block text-xs font-semibold text-[#111827] mb-1">
                       Phone Number <span className="text-[#64748B] font-normal">(Optional)</span>
                     </label>
                     <input
@@ -424,12 +428,15 @@ export const Checkout: React.FC<CheckoutProps> = ({
                       placeholder="Enter your phone number"
                       className={`w-full px-3.5 py-2.5 rounded-xl border ${
                         touched.phone && fieldErrors.phone
-                          ? 'border-red-500 ring-2 ring-red-500/20'
-                          : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent'
-                      } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC]`}
+                          ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/20'
+                          : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] focus:border-transparent bg-[#F8FAFC]'
+                      } text-sm text-[#111827] focus:outline-none transition-all`}
                     />
                     {touched.phone && fieldErrors.phone && (
-                      <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.phone}</p>
+                      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600 font-medium bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
+                        <span>{fieldErrors.phone}</span>
+                      </div>
                     )}
                   </div>
                 </div>

@@ -9,7 +9,8 @@ import {
   Eye,
   EyeOff,
   KeyRound,
-  RefreshCcw
+  RefreshCcw,
+  AlertCircle
 } from 'lucide-react';
 import { api } from '../services/api';
 import { OneTapLogo } from './OneTapLogo';
@@ -314,11 +315,11 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               </div>
             )}
 
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4" noValidate>
               {/* Email */}
               <div>
                 <label className="block text-xs font-bold text-[#111827] uppercase tracking-wider mb-1.5">
-                  Admin Email
+                  Admin Email <span className="text-red-500 font-bold">*</span>
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#94A3B8]">
@@ -327,7 +328,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                   <input
                     id="admin-email-input"
                     type="email"
-                    required
                     autoComplete="email"
                     value={email}
                     onChange={(e) => {
@@ -338,20 +338,23 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                     placeholder="Enter your email"
                     className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl border ${
                       touched.email && fieldErrors.email
-                        ? 'border-red-500 ring-2 ring-red-500/20'
-                        : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
-                    } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC]`}
+                        ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/20'
+                        : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC]'
+                    } text-sm text-[#111827] focus:outline-none transition-all`}
                   />
                 </div>
                 {touched.email && fieldErrors.email && (
-                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.email}</p>
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600 font-medium bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
+                    <span>{fieldErrors.email}</span>
+                  </div>
                 )}
               </div>
 
               {/* Password */}
               <div>
                 <label className="block text-xs font-bold text-[#111827] uppercase tracking-wider mb-1.5">
-                  Password
+                  Password <span className="text-red-500 font-bold">*</span>
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#94A3B8]">
@@ -360,7 +363,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                   <input
                     id="admin-password-input"
                     type={showPassword ? 'text' : 'password'}
-                    required
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => {
@@ -371,9 +373,9 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                     placeholder="Enter Password"
                     className={`w-full pl-10 pr-10 py-2.5 rounded-xl border ${
                       touched.password && fieldErrors.password
-                        ? 'border-red-500 ring-2 ring-red-500/20'
-                        : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB]'
-                    } text-sm text-[#111827] focus:outline-none bg-[#F8FAFC]`}
+                        ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/20'
+                        : 'border-[#E2E8F0] focus:ring-2 focus:ring-[#6D5DFB] bg-[#F8FAFC]'
+                    } text-sm text-[#111827] focus:outline-none transition-all`}
                   />
                   <button
                     type="button"
@@ -386,7 +388,10 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                   </button>
                 </div>
                 {touched.password && fieldErrors.password && (
-                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.password}</p>
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600 font-medium bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
+                    <span>{fieldErrors.password}</span>
+                  </div>
                 )}
 
                 {/* Forgot Password link — red, below password, above login */}

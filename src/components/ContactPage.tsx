@@ -234,7 +234,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
                 </div>
               ) : (
                 <div>
-                  <form onSubmit={handleSubmit} className="space-y-4">
+                  <form onSubmit={handleSubmit} className="space-y-4" noValidate>
                     <div>
                       <h2 className="text-lg font-extrabold text-[#111827]">
                         Send Us a Message

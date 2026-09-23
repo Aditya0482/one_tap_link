@@ -30,20 +30,20 @@ export const isValidSlug = (slug: string): boolean => {
 // ─── Field-level validators (return error string or '') ───
 
 export const validateName = (name: string): string => {
-  if (!name.trim()) return 'Name is required.';
+  if (!name.trim()) return 'Please enter your full name.';
   if (name.trim().length < 2) return 'Name must be at least 2 characters.';
   if (name.trim().length > 100) return 'Name must be under 100 characters.';
   return '';
 };
 
 export const validateEmail = (email: string): string => {
-  if (!email.trim()) return 'Email address is required.';
+  if (!email.trim()) return 'Please enter your email address.';
   if (!isValidEmail(email)) return 'Please enter a valid email address (e.g. name@example.com).';
   return '';
 };
 
 export const validatePassword = (password: string, label = 'Password'): string => {
-  if (!password.trim()) return `${label} is required.`;
+  if (!password.trim()) return `Please enter your ${label.toLowerCase()}.`;
   if (password.trim().length < 6) return `${label} must be at least 6 characters.`;
   if (password.trim().length > 128) return `${label} must be under 128 characters.`;
   return '';
@@ -72,7 +72,7 @@ export const validateOptionalPhone = (phone: string): string => {
 };
 
 export const validateOtp = (otp: string): string => {
-  if (!otp.trim()) return 'Verification code is required.';
+  if (!otp.trim()) return 'Please enter the 6-digit verification code.';
   if (!/^\d{6}$/.test(otp.trim())) return 'Code must be exactly 6 digits.';
   return '';
 };

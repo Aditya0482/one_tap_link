@@ -13,7 +13,8 @@ import {
   EyeOff,
   KeyRound,
   RotateCcw,
-  Phone
+  Phone,
+  AlertCircle
 } from 'lucide-react';
 import { Template, User } from '../types';
 import { api } from '../services/api';
@@ -374,7 +375,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
           {/* FORGOT PASSWORD - STEP 2: ENTER OTP & NEW PASSWORD */}
           {/* ========================================================================= */}
           {mode === 'forgot' && forgotStep === 'otp' ? (
-            <form onSubmit={handleResetPassword} className="space-y-3.5 text-left">
+            <form onSubmit={handleResetPassword} className="space-y-3.5 text-left" noValidate>
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                 <div className="min-w-0">
                   <span className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider block">
@@ -394,7 +395,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
               {/* 6-Digit OTP Input */}
               <div>
                 <label className="block text-xs font-semibold text-[#111827] mb-1">
-                  6-Digit Verification Code
+                  6-Digit Verification Code <span className="text-red-500 font-bold">*</span>
                 </label>
                 <div className="relative">
                   <KeyRound className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -402,7 +403,6 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     type="text"
                     inputMode="numeric"
                     maxLength={6}
-                    required
                     value={otp}
                     onChange={(e) => {
                       const val = e.target.value.replace(/\D/g, '');
@@ -413,26 +413,28 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     placeholder="123456"
                     className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
                       touched.otp && fieldErrors.otp
-                        ? 'border-red-500 ring-2 ring-red-500/20'
-                        : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20'
-                    } outline-none text-base font-mono tracking-widest text-[#111827] transition-all bg-white text-center font-bold`}
+                        ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/20'
+                        : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 bg-white'
+                    } outline-none text-base font-mono tracking-widest text-[#111827] transition-all text-center font-bold`}
                   />
                 </div>
                 {touched.otp && fieldErrors.otp && (
-                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.otp}</p>
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600 font-medium bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
+                    <span>{fieldErrors.otp}</span>
+                  </div>
                 )}
               </div>
 
               {/* New Password Input */}
               <div>
                 <label className="block text-xs font-semibold text-[#111827] mb-1">
-                  New Password
+                  New Password <span className="text-red-500 font-bold">*</span>
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type={showNewPassword ? 'text' : 'password'}
-                    required
                     minLength={6}
                     value={newPassword}
                     onChange={(e) => {
@@ -443,9 +445,9 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     placeholder="Enter new password (min. 6 characters)"
                     className={`w-full pl-10 pr-10 py-2.5 rounded-xl border ${
                       touched.newPassword && fieldErrors.newPassword
-                        ? 'border-red-500 ring-2 ring-red-500/20'
-                        : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20'
-                    } outline-none text-xs text-[#111827] transition-all bg-white`}
+                        ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/20'
+                        : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 bg-white'
+                    } outline-none text-xs text-[#111827] transition-all`}
                   />
                   <button
                     type="button"
@@ -458,7 +460,10 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   </button>
                 </div>
                 {touched.newPassword && fieldErrors.newPassword && (
-                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.newPassword}</p>
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600 font-medium bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
+                    <span>{fieldErrors.newPassword}</span>
+                  </div>
                 )}
               </div>
 
@@ -512,17 +517,16 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             /* ========================================================================= */
             /* SIGNIN / SIGNUP / FORGOT STEP 1: ENTER EMAIL */
             /* ========================================================================= */
-            <form onSubmit={handleSubmit} className="space-y-3 text-left">
+            <form onSubmit={handleSubmit} className="space-y-3 text-left" noValidate>
               {mode === 'signup' && (
                 <div>
                   <label className="block text-xs font-semibold text-[#111827] mb-1">
-                    Full Name
+                    Full Name <span className="text-red-500 font-bold">*</span>
                   </label>
                   <div className="relative">
                     <UserIcon className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="text"
-                      required
                       value={name}
                       onChange={(e) => {
                         setName(e.target.value);
@@ -532,13 +536,16 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                       placeholder="John Doe"
                       className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
                         touched.name && fieldErrors.name
-                          ? 'border-red-500 ring-2 ring-red-500/20'
-                          : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20'
-                      } outline-none text-xs text-[#111827] transition-all bg-white`}
+                          ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/20'
+                          : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 bg-white'
+                      } outline-none text-xs text-[#111827] transition-all`}
                     />
                   </div>
                   {touched.name && fieldErrors.name && (
-                    <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.name}</p>
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600 font-medium bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
+                      <span>{fieldErrors.name}</span>
+                    </div>
                   )}
                 </div>
               )}
@@ -569,26 +576,28 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                       placeholder="Enter your phone number (optional)"
                       className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
                         touched.phone && fieldErrors.phone
-                          ? 'border-red-500 ring-2 ring-red-500/20'
-                          : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20'
-                      } outline-none text-xs text-[#111827] transition-all bg-white`}
+                          ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/20'
+                          : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 bg-white'
+                      } outline-none text-xs text-[#111827] transition-all`}
                     />
                   </div>
                   {touched.phone && fieldErrors.phone && (
-                    <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.phone}</p>
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600 font-medium bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
+                      <span>{fieldErrors.phone}</span>
+                    </div>
                   )}
                 </div>
               )}
 
               <div>
                 <label className="block text-xs font-semibold text-[#111827] mb-1">
-                  Email Address
+                  Email Address <span className="text-red-500 font-bold">*</span>
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="email"
-                    required
                     value={email}
                     onChange={(e) => {
                       setEmail(e.target.value);
@@ -598,26 +607,28 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     placeholder="name@example.com"
                     className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
                       touched.email && fieldErrors.email
-                        ? 'border-red-500 ring-2 ring-red-500/20'
-                        : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20'
-                    } outline-none text-xs text-[#111827] transition-all bg-white`}
+                        ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/20'
+                        : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 bg-white'
+                    } outline-none text-xs text-[#111827] transition-all`}
                   />
                 </div>
                 {touched.email && fieldErrors.email && (
-                  <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.email}</p>
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600 font-medium bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
+                    <span>{fieldErrors.email}</span>
+                  </div>
                 )}
               </div>
 
               {mode !== 'forgot' && (
                 <div>
                   <label className="block text-xs font-semibold text-[#111827] mb-1">
-                    Password
+                    Password <span className="text-red-500 font-bold">*</span>
                   </label>
                   <div className="relative">
                     <Lock className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type={showPassword ? 'text' : 'password'}
-                      required
                       value={password}
                       onChange={(e) => {
                         setPassword(e.target.value);
@@ -627,9 +638,9 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                       placeholder="Enter Password"
                       className={`w-full pl-10 pr-10 py-2.5 rounded-xl border ${
                         touched.password && fieldErrors.password
-                          ? 'border-red-500 ring-2 ring-red-500/20'
-                          : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20'
-                      } outline-none text-xs text-[#111827] transition-all bg-white`}
+                          ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/20'
+                          : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20 bg-white'
+                      } outline-none text-xs text-[#111827] transition-all`}
                     />
                     <button
                       type="button"
@@ -642,7 +653,10 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                     </button>
                   </div>
                   {touched.password && fieldErrors.password && (
-                    <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.password}</p>
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs text-red-600 font-medium bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
+                      <span>{fieldErrors.password}</span>
+                    </div>
                   )}
                   {mode === 'signin' && (
                     <div className="mt-1.5 flex justify-end">
