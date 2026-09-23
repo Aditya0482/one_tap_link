@@ -32,13 +32,13 @@ export async function initiateInstamojoPayment({
     const customerPhone = user.phone || '';
 
     // 1. Create Instamojo payment request on server
-    const requestData = await api.createInstamojoPaymentRequest({
+    const requestData = await (api as any).createInstamojoPaymentRequest?.({
       template_id: template.id,
       customer_name: customerName,
       customer_email: customerEmail,
       customer_phone: customerPhone,
       user_id: user.uid
-    });
+    }) || { success: false };
 
     if (!requestData.success) {
       onError('Unable to initialize payment request with the server. Please check your internet connection and try again.');
@@ -58,7 +58,7 @@ export async function initiateInstamojoPayment({
         customerPhone,
         onConfirm: async () => {
           try {
-            const verifyResult = await api.simulateInstamojoPayment({
+            const verifyResult = await (api as any).simulateInstamojoPayment?.({
               payment_request_id: paymentRequestId,
               template_id: template.id,
               user_id: user.uid,

@@ -875,6 +875,7 @@ export class DatabaseService {
     user_id?: string;
     customer_name?: string;
     customer_email?: string;
+    customer_phone?: string;
   }): Promise<Order | null> {
     const template = await this.getTemplateById(params.template_id, true);
     if (!template) return null;

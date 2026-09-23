@@ -630,6 +630,7 @@ class Database {
     user_id?: string;
     customer_name?: string;
     customer_email?: string;
+    customer_phone?: string;
   }): Order | null {
     // 1. Check if already marked as paid with this payment ID (prevent duplicates)
     const existingPayment = this.getOrderByRazorpayPaymentId(params.razorpay_payment_id);
