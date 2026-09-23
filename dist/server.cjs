@@ -927,10 +927,15 @@ var DatabaseService = class {
             email VARCHAR(255) UNIQUE NOT NULL,
             name VARCHAR(255),
             password_hash VARCHAR(255),
+            phone VARCHAR(50),
             created_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW()
           );
         `);
+        await client.query(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+        `).catch(() => {
+        });
         await client.query(`
           CREATE TABLE IF NOT EXISTS templates (
             id VARCHAR(255) PRIMARY KEY,
@@ -1096,15 +1101,16 @@ var DatabaseService = class {
   async createUser(data) {
     const cleanEmail = data.email.trim().toLowerCase();
     const cleanName = data.name.trim();
+    const cleanPhone = (data.phone || "").trim();
     const id = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const passwordHash = data.password ? import_bcryptjs2.default.hashSync(data.password.trim(), 10) : null;
     if (this.isPostgres && this.pool) {
       const res = await this.pool.query(
-        `INSERT INTO users (id, email, name, password_hash, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, email, name, created_at`,
-        [id, cleanEmail, cleanName, passwordHash, now, now]
+        `INSERT INTO users (id, email, name, password_hash, phone, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, email, name, phone, created_at`,
+        [id, cleanEmail, cleanName, passwordHash, cleanPhone || null, now, now]
       );
       const row = res.rows[0];
       return {
@@ -1112,6 +1118,8 @@ var DatabaseService = class {
         uid: row.id,
         email: row.email,
         displayName: row.name || "",
+        name: row.name || "",
+        phone: row.phone || "",
         created_at: row.created_at
       };
     }
@@ -1120,6 +1128,8 @@ var DatabaseService = class {
       uid: id,
       email: cleanEmail,
       displayName: cleanName,
+      name: cleanName,
+      phone: cleanPhone,
       created_at: now
     };
   }
@@ -1127,7 +1137,7 @@ var DatabaseService = class {
     const cleanEmail = email.trim().toLowerCase();
     if (this.isPostgres && this.pool) {
       const res = await this.pool.query(
-        "SELECT id, email, name, password_hash, created_at FROM users WHERE LOWER(email) = $1",
+        "SELECT id, email, name, phone, password_hash, created_at FROM users WHERE LOWER(email) = $1",
         [cleanEmail]
       );
       if (res.rows.length === 0) return null;
@@ -1140,6 +1150,8 @@ var DatabaseService = class {
         uid: user.id,
         email: user.email,
         displayName: user.name || "",
+        name: user.name || "",
+        phone: user.phone || "",
         created_at: user.created_at
       };
     }
@@ -1149,7 +1161,7 @@ var DatabaseService = class {
     const cleanEmail = email.trim().toLowerCase();
     if (this.isPostgres && this.pool) {
       const res = await this.pool.query(
-        "SELECT id, email, name, created_at FROM users WHERE LOWER(email) = $1",
+        "SELECT id, email, name, phone, created_at FROM users WHERE LOWER(email) = $1",
         [cleanEmail]
       );
       if (res.rows.length === 0) return null;
@@ -1159,6 +1171,8 @@ var DatabaseService = class {
         uid: user.id,
         email: user.email,
         displayName: user.name || "",
+        name: user.name || "",
+        phone: user.phone || "",
         created_at: user.created_at
       };
     }
@@ -1167,7 +1181,7 @@ var DatabaseService = class {
   async getUserById(id) {
     if (this.isPostgres && this.pool) {
       const res = await this.pool.query(
-        "SELECT id, email, name, created_at FROM users WHERE id = $1",
+        "SELECT id, email, name, phone, created_at FROM users WHERE id = $1",
         [id]
       );
       if (res.rows.length === 0) return null;
@@ -1177,6 +1191,8 @@ var DatabaseService = class {
         uid: user.id,
         email: user.email,
         displayName: user.name || "",
+        name: user.name || "",
+        phone: user.phone || "",
         created_at: user.created_at
       };
     }
@@ -2246,7 +2262,7 @@ async function startServer() {
   });
   app.post("/api/auth/signup", authLimiter, async (req, res) => {
     try {
-      const { name, email, password } = req.body;
+      const { name, email, password, phone } = req.body;
       if (!email || !password) {
         return res.status(400).json({ error: "Email and password are required." });
       }
@@ -2261,7 +2277,8 @@ async function startServer() {
       const user = await pgDb.createUser({
         name: name?.trim() || cleanEmail.split("@")[0],
         email: cleanEmail,
-        password: password.trim()
+        password: password.trim(),
+        phone: (phone || "").toString().trim()
       });
       const token = createSessionToken(user.id, user.email, "user");
       res.status(201).json({

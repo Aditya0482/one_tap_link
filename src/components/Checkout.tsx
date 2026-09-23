@@ -17,7 +17,7 @@ import { Template, Order, User, PurchaseRecord } from '../types';
 import { initiateRazorpayPayment } from '../utils/razorpay';
 import { api } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
-import { validateName, validateEmail, validatePhone } from '../utils/validators';
+import { validateName, validateEmail, validateOptionalPhone } from '../utils/validators';
 import { trackInitiateCheckout } from '../utils/metaPixel';
 
 interface CheckoutProps {
@@ -53,10 +53,26 @@ export const Checkout: React.FC<CheckoutProps> = ({
 
   const [name, setName] = useState(user?.displayName || user?.name || savedProfile.name || '');
   const [email, setEmail] = useState(user?.email || savedProfile.email || '');
-  const [phone, setPhone] = useState(user?.phone || savedProfile.phone || '');
+  // Phone comes ONLY if available in user's database account; otherwise empty
+  const [phone, setPhone] = useState(user?.phone ? user.phone : '');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [isAutoFilled, setIsAutoFilled] = useState(Boolean(savedProfile.phone || user?.phone));
+  const [isAutoFilled, setIsAutoFilled] = useState(Boolean(user?.phone));
+
+  // Sync when user prop changes (e.g. after login)
+  useEffect(() => {
+    if (user) {
+      if (user.displayName || user.name) setName(user.displayName || user.name || '');
+      if (user.email) setEmail(user.email);
+      if (user.phone) {
+        setPhone(user.phone);
+        setIsAutoFilled(true);
+      } else {
+        setPhone('');
+        setIsAutoFilled(false);
+      }
+    }
+  }, [user]);
 
   // Field validation
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -69,7 +85,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
     } else if (field === 'email') {
       err = validateEmail(val !== undefined ? val : email);
     } else if (field === 'phone') {
-      err = validatePhone(val !== undefined ? val : phone);
+      err = validateOptionalPhone(val !== undefined ? val : phone);
     }
     setFieldErrors(prev => ({ ...prev, [field]: err }));
     return err;
@@ -98,10 +114,6 @@ export const Checkout: React.FC<CheckoutProps> = ({
           if (res.details.name && (!name || name === 'Customer')) {
             setName(res.details.name);
           }
-          if (res.details.phone && !phone) {
-            setPhone(res.details.phone);
-            setIsAutoFilled(true);
-          }
           if (res.details.email && !email) {
             setEmail(res.details.email);
           }
@@ -115,7 +127,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
     return () => { isMounted = false; };
   }, [user]);
 
-  // 3. Auto-populate name & mobile number if customer types their email
+  // 3. Auto-populate name if customer types their email
   const handleEmailBlur = async () => {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) return;
@@ -125,10 +137,6 @@ export const Checkout: React.FC<CheckoutProps> = ({
       if (res.success && res.found && res.details) {
         if (res.details.name && (!name || name === 'Customer')) {
           setName(res.details.name);
-        }
-        if (res.details.phone && !phone) {
-          setPhone(res.details.phone);
-          setIsAutoFilled(true);
         }
       }
     } catch (e) {
@@ -152,7 +160,7 @@ export const Checkout: React.FC<CheckoutProps> = ({
 
     const nameErr = validateName(name);
     const emailErr = validateEmail(email);
-    const phoneErr = validatePhone(phone);
+    const phoneErr = validateOptionalPhone(phone);
 
     setTouched({ name: true, email: true, phone: true });
     setFieldErrors({ name: nameErr, email: emailErr, phone: phoneErr });
@@ -402,19 +410,18 @@ export const Checkout: React.FC<CheckoutProps> = ({
 
                   <div>
                     <label className="block text-xs font-medium text-[#111827] mb-1">
-                      Phone Number (Required for UPI & Payment Status)
+                      Phone Number <span className="text-[#64748B] font-normal">(Optional)</span>
                     </label>
                     <input
                       id="checkout-phone-input"
                       type="tel"
-                      required
                       value={phone}
                       onChange={(e) => {
                         setPhone(e.target.value);
                         if (touched.phone) validateCheckoutField('phone', e.target.value);
                       }}
                       onBlur={() => handleCheckoutBlur('phone')}
-                      placeholder="e.g. 9876543210"
+                      placeholder="Enter your phone number"
                       className={`w-full px-3.5 py-2.5 rounded-xl border ${
                         touched.phone && fieldErrors.phone
                           ? 'border-red-500 ring-2 ring-red-500/20'

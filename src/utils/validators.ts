@@ -63,6 +63,14 @@ export const validatePhone = (phone: string): string => {
   return '';
 };
 
+export const validateOptionalPhone = (phone: string): string => {
+  if (!phone || !phone.trim()) return '';
+  const cleaned = phone.replace(/[^0-9]/g, '');
+  if (cleaned.length < 10) return 'Please enter a valid 10-digit mobile number.';
+  if (cleaned.length > 13) return 'Phone number is too long.';
+  return '';
+};
+
 export const validateOtp = (otp: string): string => {
   if (!otp.trim()) return 'Verification code is required.';
   if (!/^\d{6}$/.test(otp.trim())) return 'Code must be exactly 6 digits.';

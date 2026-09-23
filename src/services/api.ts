@@ -182,7 +182,7 @@ export const api = {
   },
 
   // Customer Authentication (PostgreSQL)
-  async customerSignup(payload: { name?: string; email: string; password: string }): Promise<{ success: boolean; token: string; user: User }> {
+  async customerSignup(payload: { name?: string; email: string; password: string; phone?: string }): Promise<{ success: boolean; token: string; user: User }> {
     const res = await fetch('/api/auth/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

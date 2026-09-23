@@ -114,7 +114,7 @@ async function startServer() {
   // Customer Sign Up (Protected by rate limiter)
   app.post('/api/auth/signup', authLimiter, async (req, res) => {
     try {
-      const { name, email, password } = req.body;
+      const { name, email, password, phone } = req.body;
       if (!email || !password) {
         return res.status(400).json({ error: 'Email and password are required.' });
       }
@@ -132,7 +132,8 @@ async function startServer() {
       const user = await pgDb.createUser({
         name: name?.trim() || cleanEmail.split('@')[0],
         email: cleanEmail,
-        password: password.trim()
+        password: password.trim(),
+        phone: (phone || '').toString().trim()
       });
 
       const token = createSessionToken(user.id, user.email, 'user');

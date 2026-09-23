@@ -84,10 +84,16 @@ export class DatabaseService {
             email VARCHAR(255) UNIQUE NOT NULL,
             name VARCHAR(255),
             password_hash VARCHAR(255),
+            phone VARCHAR(50),
             created_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW()
           );
         `);
+
+        // Migration: Ensure phone column exists
+        await client.query(`
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+        `).catch(() => {});
 
         // 3. Templates table
         await client.query(`
@@ -272,9 +278,10 @@ export class DatabaseService {
   // ==========================================
   // CUSTOMER AUTHENTICATION (POSTGRESQL)
   // ==========================================
-  public async createUser(data: { name: string; email: string; password?: string }): Promise<User> {
+  public async createUser(data: { name: string; email: string; password?: string; phone?: string }): Promise<User> {
     const cleanEmail = data.email.trim().toLowerCase();
     const cleanName = data.name.trim();
+    const cleanPhone = (data.phone || '').trim();
     const id = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const now = new Date().toISOString();
 
@@ -282,10 +289,10 @@ export class DatabaseService {
 
     if (this.isPostgres && this.pool) {
       const res = await this.pool.query(
-        `INSERT INTO users (id, email, name, password_hash, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, email, name, created_at`,
-        [id, cleanEmail, cleanName, passwordHash, now, now]
+        `INSERT INTO users (id, email, name, password_hash, phone, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, email, name, phone, created_at`,
+        [id, cleanEmail, cleanName, passwordHash, cleanPhone || null, now, now]
       );
       const row = res.rows[0];
       return {
@@ -293,6 +300,8 @@ export class DatabaseService {
         uid: row.id,
         email: row.email,
         displayName: row.name || '',
+        name: row.name || '',
+        phone: row.phone || '',
         created_at: row.created_at
       };
     }
@@ -303,6 +312,8 @@ export class DatabaseService {
       uid: id,
       email: cleanEmail,
       displayName: cleanName,
+      name: cleanName,
+      phone: cleanPhone,
       created_at: now
     };
   }
@@ -312,7 +323,7 @@ export class DatabaseService {
 
     if (this.isPostgres && this.pool) {
       const res = await this.pool.query(
-        'SELECT id, email, name, password_hash, created_at FROM users WHERE LOWER(email) = $1',
+        'SELECT id, email, name, phone, password_hash, created_at FROM users WHERE LOWER(email) = $1',
         [cleanEmail]
       );
       if (res.rows.length === 0) return null;
@@ -328,6 +339,8 @@ export class DatabaseService {
         uid: user.id,
         email: user.email,
         displayName: user.name || '',
+        name: user.name || '',
+        phone: user.phone || '',
         created_at: user.created_at
       };
     }
@@ -339,7 +352,7 @@ export class DatabaseService {
     const cleanEmail = email.trim().toLowerCase();
     if (this.isPostgres && this.pool) {
       const res = await this.pool.query(
-        'SELECT id, email, name, created_at FROM users WHERE LOWER(email) = $1',
+        'SELECT id, email, name, phone, created_at FROM users WHERE LOWER(email) = $1',
         [cleanEmail]
       );
       if (res.rows.length === 0) return null;
@@ -349,6 +362,8 @@ export class DatabaseService {
         uid: user.id,
         email: user.email,
         displayName: user.name || '',
+        name: user.name || '',
+        phone: user.phone || '',
         created_at: user.created_at
       };
     }
@@ -358,7 +373,7 @@ export class DatabaseService {
   public async getUserById(id: string): Promise<User | null> {
     if (this.isPostgres && this.pool) {
       const res = await this.pool.query(
-        'SELECT id, email, name, created_at FROM users WHERE id = $1',
+        'SELECT id, email, name, phone, created_at FROM users WHERE id = $1',
         [id]
       );
       if (res.rows.length === 0) return null;
@@ -368,6 +383,8 @@ export class DatabaseService {
         uid: user.id,
         email: user.email,
         displayName: user.name || '',
+        name: user.name || '',
+        phone: user.phone || '',
         created_at: user.created_at
       };
     }

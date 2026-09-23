@@ -12,12 +12,13 @@ import {
   Eye,
   EyeOff,
   KeyRound,
-  RotateCcw
+  RotateCcw,
+  Phone
 } from 'lucide-react';
 import { Template, User } from '../types';
 import { api } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
-import { validateName, validateEmail, validatePassword, validateOtp } from '../utils/validators';
+import { validateName, validateEmail, validatePassword, validateOtp, validateOptionalPhone } from '../utils/validators';
 
 interface CustomerAuthModalProps {
   isOpen: boolean;
@@ -38,6 +39,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   // Input fields
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState('');
@@ -90,6 +92,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   const resetForm = () => {
     setName('');
     setEmail('');
+    setPhone('');
     setPassword('');
     setShowPassword(false);
     setOtp('');
@@ -211,6 +214,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
     if (mode === 'signup') {
       const nameErr = validateName(name);
       if (nameErr) errors.name = nameErr;
+      const phoneErr = validateOptionalPhone(phone);
+      if (phoneErr) errors.phone = phoneErr;
     }
     const emailErr = validateEmail(email);
     if (emailErr) errors.email = emailErr;
@@ -220,7 +225,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
-      setTouched({ name: true, email: true, password: true });
+      setTouched({ name: true, email: true, password: true, phone: true });
       setError('Please resolve the highlighted errors before submitting.');
       return;
     }
@@ -231,7 +236,8 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         const res = await api.customerSignup({
           name: name.trim() || email.split('@')[0],
           email: email.trim(),
-          password: password.trim()
+          password: password.trim(),
+          phone: phone.trim()
         });
         if (res.token) {
           localStorage.setItem('onetap_customer_token', res.token);
@@ -533,6 +539,43 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
                   </div>
                   {touched.name && fieldErrors.name && (
                     <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.name}</p>
+                  )}
+                </div>
+              )}
+
+              {mode === 'signup' && (
+                <div>
+                  <label className="block text-xs font-semibold text-[#111827] mb-1">
+                    Phone Number <span className="text-[#94A3B8] font-normal">(Optional)</span>
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-4 h-4 text-[#94A3B8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9+ ]/g, '');
+                        setPhone(val);
+                        if (touched.phone) {
+                          const err = validateOptionalPhone(val);
+                          setFieldErrors(prev => ({ ...prev, phone: err }));
+                        }
+                      }}
+                      onBlur={() => {
+                        setTouched(prev => ({ ...prev, phone: true }));
+                        const err = validateOptionalPhone(phone);
+                        setFieldErrors(prev => ({ ...prev, phone: err }));
+                      }}
+                      placeholder="Enter your phone number (optional)"
+                      className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
+                        touched.phone && fieldErrors.phone
+                          ? 'border-red-500 ring-2 ring-red-500/20'
+                          : 'border-[#E2E8F0] focus:border-[#6D5DFB] focus:ring-2 focus:ring-[#6D5DFB]/20'
+                      } outline-none text-xs text-[#111827] transition-all bg-white`}
+                    />
+                  </div>
+                  {touched.phone && fieldErrors.phone && (
+                    <p className="mt-1 text-[11px] text-red-500 font-medium">{fieldErrors.phone}</p>
                   )}
                 </div>
               )}
