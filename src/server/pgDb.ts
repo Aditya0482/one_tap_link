@@ -159,6 +159,15 @@ export class DatabaseService {
           CREATE INDEX IF NOT EXISTS idx_orders_rzp_pay ON orders(razorpay_payment_id);
         `);
 
+        // Clean up legacy test / dummy orders & dummy users
+        await client.query(`
+          DELETE FROM orders 
+          WHERE id IN ('ord_1789890533083_HLFD', 'ord_1789888694728_8MUL', 'ord_1788770661911_PMXY')
+             OR LOWER(customer_email) IN ('aditya.verma@example.com', 'john@gmail.com');
+          DELETE FROM users
+          WHERE LOWER(email) IN ('aditya.verma@example.com', 'john@gmail.com');
+        `).catch((e) => console.warn('Clean dummy orders notice:', e));
+
 
         // 5. Contact Inquiries table
         await client.query(`
