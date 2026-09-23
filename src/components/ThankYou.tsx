@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Order } from '../types';
 import { OneTapLogo } from './OneTapLogo';
+import { trackPurchase } from '../utils/metaPixel';
 
 interface ThankYouProps {
   order: Order;
@@ -28,6 +29,13 @@ export const ThankYou: React.FC<ThankYouProps> = ({
   onBackToStore,
   onOpenPurchases
 }) => {
+  // Meta Pixel: Track Purchase event on order confirmation
+  React.useEffect(() => {
+    if (order && order.id) {
+      trackPurchase(order);
+    }
+  }, [order?.id]);
+
   const accessUrl = order.access_url || 'https://docs.google.com/spreadsheets/u/0/';
   const paymentRef = order.instamojo_payment_id || order.razorpay_payment_id || order.payment_reference || 'N/A';
   

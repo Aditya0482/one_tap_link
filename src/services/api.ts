@@ -41,7 +41,10 @@ export const api = {
   },
 
   async getOrder(orderId: string): Promise<Order> {
-    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`);
+    const token = localStorage.getItem('onetap_customer_token') || localStorage.getItem('onetap_admin_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, { headers });
     if (!res.ok) throw new Error('Order not found');
     const data = await res.json();
     return data.order || data;
@@ -63,7 +66,10 @@ export const api = {
       const params = new URLSearchParams();
       if (userId && userId !== 'guest-checkout') params.append('userId', userId);
       if (email) params.append('email', email);
-      const res = await fetch(`/api/user/checkout-details?${params.toString()}`);
+      const token = localStorage.getItem('onetap_customer_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`/api/user/checkout-details?${params.toString()}`, { headers });
       if (!res.ok) return { success: false, found: false, details: null };
       return await res.json();
     } catch {
@@ -134,7 +140,10 @@ export const api = {
 
   async getUserPurchases(userId: string, email?: string): Promise<{ success: boolean; purchases: Order[] }> {
     const query = email ? `?email=${encodeURIComponent(email)}` : '';
-    const res = await fetch(`/api/user/purchases/${encodeURIComponent(userId)}${query}`);
+    const token = localStorage.getItem('onetap_customer_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`/api/user/purchases/${encodeURIComponent(userId)}${query}`, { headers });
     if (!res.ok) throw new Error('Failed to fetch purchases');
     return res.json();
   },

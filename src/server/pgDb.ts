@@ -479,6 +479,19 @@ export class DatabaseService {
     return null;
   }
 
+  public async hasAdmins(): Promise<boolean> {
+    if (this.isPostgres && this.pool) {
+      try {
+        const res = await this.pool.query('SELECT COUNT(*) FROM admins');
+        return parseInt(res.rows[0].count, 10) > 0;
+      } catch (err) {
+        console.error('[PostgreSQL] Error checking admins count:', err);
+      }
+    }
+    const storeAdmins = (jsonDb as any).data?.admins || [];
+    return storeAdmins.length > 0;
+  }
+
   // ==========================================
   // TEMPLATES MANAGEMENT (POSTGRESQL)
   // ==========================================
@@ -1292,6 +1305,18 @@ export class DatabaseService {
     } catch {}
 
     return { success: true };
+  }
+
+  public async invalidatePasswordResetOtp(email: string): Promise<void> {
+    const cleanEmail = email.trim().toLowerCase();
+    this.localOtpResets.delete(cleanEmail);
+    if (this.isPostgres && this.pool) {
+      try {
+        await this.pool.query('DELETE FROM password_resets WHERE LOWER(email) = $1', [cleanEmail]);
+      } catch (err) {
+        console.error('[PostgreSQL] Error invalidating OTP in DB:', err);
+      }
+    }
   }
 }
 

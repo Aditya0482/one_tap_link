@@ -18,6 +18,7 @@ import { initiateRazorpayPayment } from '../utils/razorpay';
 import { api } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
 import { validateName, validateEmail, validatePhone } from '../utils/validators';
+import { trackInitiateCheckout } from '../utils/metaPixel';
 
 interface CheckoutProps {
   template: Template;
@@ -34,6 +35,13 @@ export const Checkout: React.FC<CheckoutProps> = ({
   user,
   onRequireAuth
 }) => {
+  // Meta Pixel: Track InitiateCheckout when customer views checkout
+  useEffect(() => {
+    if (template) {
+      trackInitiateCheckout(template);
+    }
+  }, [template?.id]);
+
   // 1. Synchronously pre-load previous customer details from localStorage if available
   const savedProfile = React.useMemo(() => {
     try {

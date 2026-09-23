@@ -45,9 +45,52 @@ function adminAuthMiddleware(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// In-memory rate limiting store: key -> Array of timestamps
+const rateLimits = new Map<string, number[]>();
+
+function createRateLimiter(windowMs: number, maxRequests: number, message: string = 'Too many requests, please try again later.') {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const rawIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || req.socket.remoteAddress || 'unknown';
+    const key = `${req.path}_${rawIp}`;
+    const now = Date.now();
+    const timestamps = rateLimits.get(key) || [];
+    const validTimestamps = timestamps.filter(t => now - t < windowMs);
+
+    if (validTimestamps.length >= maxRequests) {
+      return res.status(429).json({ error: message });
+    }
+
+    validTimestamps.push(now);
+    rateLimits.set(key, validTimestamps);
+    next();
+  };
+}
+
+// Track OTP verification attempts per email to prevent brute-force
+const otpAttemptsMap = new Map<string, number>();
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+  const distPath = path.join(process.cwd(), 'dist');
+  const hasDist = fs.existsSync(path.join(distPath, 'index.html'));
+  const isProduction = process.env.NODE_ENV === 'production' || hasDist;
+
+  // 1. HTTP Security Headers
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
+
+  // Rate Limiting Instances
+  const authLimiter = createRateLimiter(15 * 60 * 1000, 15, 'Too many attempts. Please try again after 15 minutes.');
+  const contactLimiter = createRateLimiter(15 * 60 * 1000, 5, 'Too many messages sent. Please wait a few minutes before submitting another inquiry.');
+  const orderCreateLimiter = createRateLimiter(5 * 60 * 1000, 10, 'Too many order requests. Please wait a moment before trying again.');
+  const otpSendLimiter = createRateLimiter(15 * 60 * 1000, 5, 'Too many verification code requests. Please wait a few minutes.');
+  const otpVerifyLimiter = createRateLimiter(15 * 60 * 1000, 10, 'Too many verification attempts. Please try again later.');
 
   // Initialize PostgreSQL database & tables (with local store fallback)
   await pgDb.initialize();
@@ -68,8 +111,8 @@ async function startServer() {
   // CUSTOMER AUTHENTICATION (POSTGRESQL)
   // ==========================================
 
-  // Customer Sign Up
-  app.post('/api/auth/signup', async (req, res) => {
+  // Customer Sign Up (Protected by rate limiter)
+  app.post('/api/auth/signup', authLimiter, async (req, res) => {
     try {
       const { name, email, password } = req.body;
       if (!email || !password) {
@@ -104,8 +147,8 @@ async function startServer() {
     }
   });
 
-  // Customer Login
-  app.post('/api/auth/login', async (req, res) => {
+  // Customer Login (Protected by rate limiter)
+  app.post('/api/auth/login', authLimiter, async (req, res) => {
     try {
       const { email, password } = req.body;
       if (!email || !password) {
@@ -134,8 +177,8 @@ async function startServer() {
   // FORGOT PASSWORD (RESEND EMAIL OTP)
   // ==========================================
 
-  // 1. Send Password Reset OTP
-  app.post('/api/auth/forgot-password/send-otp', async (req, res) => {
+  // 1. Send Password Reset OTP (Rate limited + Secure Crypto OTP)
+  app.post('/api/auth/forgot-password/send-otp', otpSendLimiter, async (req, res) => {
     try {
       const { email } = req.body;
       if (!email || !email.trim()) {
@@ -155,8 +198,11 @@ async function startServer() {
       }
 
       const userName = user?.displayName || cleanEmail.split('@')[0];
-      // Generate 6-digit numeric code
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      // Generate cryptographically secure 6-digit numeric code
+      const otp = crypto.randomInt(100000, 1000000).toString();
+
+      // Reset failed attempt count for new OTP
+      otpAttemptsMap.delete(cleanEmail);
 
       // Store in DB / Memory (15 min validity)
       await pgDb.savePasswordResetOtp(cleanEmail, otp, 15);
@@ -179,8 +225,8 @@ async function startServer() {
     }
   });
 
-  // 2. Verify OTP Code
-  app.post('/api/auth/forgot-password/verify-otp', async (req, res) => {
+  // 2. Verify OTP Code (Rate limited + Brute force lockout after 5 attempts)
+  app.post('/api/auth/forgot-password/verify-otp', otpVerifyLimiter, async (req, res) => {
     try {
       const { email, otp } = req.body;
       if (!email || !otp) {
@@ -190,11 +236,27 @@ async function startServer() {
       const cleanEmail = email.trim().toLowerCase();
       const cleanOtp = otp.trim();
 
-      const isValid = await pgDb.verifyPasswordResetOtp(cleanEmail, cleanOtp);
-      if (!isValid) {
-        return res.status(400).json({ error: 'Invalid or expired verification code. Please request a new code.' });
+      const failedAttempts = otpAttemptsMap.get(cleanEmail) || 0;
+      if (failedAttempts >= 5) {
+        await pgDb.invalidatePasswordResetOtp(cleanEmail).catch(() => {});
+        return res.status(429).json({ 
+          error: 'Too many incorrect attempts. For security, this verification code has been locked. Please request a new code.' 
+        });
       }
 
+      const isValid = await pgDb.verifyPasswordResetOtp(cleanEmail, cleanOtp);
+      if (!isValid) {
+        const nextAttempts = failedAttempts + 1;
+        otpAttemptsMap.set(cleanEmail, nextAttempts);
+        const remaining = 5 - nextAttempts;
+        return res.status(400).json({ 
+          error: remaining > 0 
+            ? `Invalid or expired verification code. (${remaining} attempt${remaining === 1 ? '' : 's'} remaining)` 
+            : 'Invalid verification code. Maximum attempts reached, code has been locked.'
+        });
+      }
+
+      otpAttemptsMap.delete(cleanEmail);
       res.json({ success: true, message: 'OTP verified successfully.' });
     } catch (err: any) {
       console.error('Verify OTP error:', err);
@@ -202,8 +264,8 @@ async function startServer() {
     }
   });
 
-  // 3. Reset Password with Verified OTP
-  app.post('/api/auth/forgot-password/reset', async (req, res) => {
+  // 3. Reset Password with Verified OTP (Rate limited + Attempt check)
+  app.post('/api/auth/forgot-password/reset', otpVerifyLimiter, async (req, res) => {
     try {
       const { email, otp, newPassword } = req.body;
       if (!email || !otp || !newPassword) {
@@ -218,11 +280,21 @@ async function startServer() {
         return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
       }
 
+      const failedAttempts = otpAttemptsMap.get(cleanEmail) || 0;
+      if (failedAttempts >= 5) {
+        await pgDb.invalidatePasswordResetOtp(cleanEmail).catch(() => {});
+        return res.status(429).json({ 
+          error: 'Too many failed attempts. Code locked for security. Please request a new code.' 
+        });
+      }
+
       const result = await pgDb.resetPasswordWithOtp(cleanEmail, cleanOtp, cleanPassword);
       if (!result.success) {
+        otpAttemptsMap.set(cleanEmail, failedAttempts + 1);
         return res.status(400).json({ error: result.error || 'Failed to reset password.' });
       }
 
+      otpAttemptsMap.delete(cleanEmail);
       res.json({
         success: true,
         message: 'Your password has been reset successfully! You can now sign in with your new password.'
@@ -320,8 +392,8 @@ async function startServer() {
     });
   });
 
-  // 3c. Razorpay: Create Order
-  app.post('/api/razorpay/create-order', async (req, res) => {
+  // 3c. Razorpay: Create Order (Rate limited against order flooding)
+  app.post('/api/razorpay/create-order', orderCreateLimiter, async (req, res) => {
     try {
       const { template_id, customer_name, customer_email, customer_phone, user_id } = req.body;
 
@@ -442,17 +514,27 @@ async function startServer() {
 
       const creds = pgDb.getRazorpayCredentials();
 
-      // Verify HMAC-SHA256 signature (skip in simulation mode)
-      if (creds.is_configured && razorpay_signature) {
+      // Strictly verify HMAC-SHA256 signature when Razorpay is configured
+      if (creds.is_configured) {
+        if (!razorpay_signature || !razorpay_signature.trim()) {
+          console.error('[Razorpay Verify] Rejected: razorpay_signature is strictly required.');
+          return res.status(400).json({ error: 'Tampered payment: Signature missing or invalid.' });
+        }
+
         const body = `${razorpay_order_id}|${razorpay_payment_id}`;
         const expectedSignature = crypto
           .createHmac('sha256', creds.key_secret)
           .update(body)
           .digest('hex');
 
-        if (expectedSignature !== razorpay_signature) {
-          console.error('[Razorpay] Signature verification failed!');
+        if (expectedSignature !== razorpay_signature.trim()) {
+          console.error('[Razorpay Verify] Signature mismatch!');
           return res.status(400).json({ error: 'Payment signature verification failed. Please contact support.' });
+        }
+      } else {
+        // If credentials are NOT configured, only allow simulation in development or if explicitly allowed
+        if (isProduction && process.env.ENABLE_PAYMENT_SIMULATION !== 'true') {
+          return res.status(403).json({ error: 'Live Razorpay payment credentials are not configured.' });
         }
       }
 
@@ -501,9 +583,13 @@ async function startServer() {
     }
   });
 
-  // 3e. Razorpay: Simulate Payment Completion (Test Simulation Mode)
+  // 3e. Razorpay: Simulate Payment Completion (Blocked in production unless explicitly enabled)
   app.post('/api/razorpay/simulate-payment', async (req, res) => {
     try {
+      if (isProduction && process.env.ENABLE_PAYMENT_SIMULATION !== 'true') {
+        return res.status(403).json({ error: 'Simulated payments are disabled in production mode.' });
+      }
+
       const { razorpay_order_id, template_id, user_id, customer_name, customer_email, customer_phone } = req.body;
 
       if (!razorpay_order_id || !template_id) {
@@ -560,15 +646,20 @@ async function startServer() {
     }
   });
 
-  // 3f. Razorpay: Webhook Event Notification (optional — for payment confirmation from Razorpay servers)
+  // 3f. Razorpay: Webhook Event Notification (Strict Signature Verification)
   app.post('/api/razorpay/webhook', async (req, res) => {
     try {
       const creds = pgDb.getRazorpayCredentials();
       const signature = req.headers['x-razorpay-signature'] as string;
       const rawBody = JSON.stringify(req.body);
 
-      // Verify webhook signature if webhook secret is set
-      if (creds.is_configured && signature) {
+      // Strictly verify webhook signature if configured
+      if (creds.is_configured) {
+        if (!signature) {
+          console.error('[Razorpay Webhook] Rejected: Missing x-razorpay-signature header');
+          return res.status(400).send('Signature missing');
+        }
+
         const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || creds.key_secret;
         const expectedSig = crypto
           .createHmac('sha256', webhookSecret)
@@ -606,7 +697,7 @@ async function startServer() {
     }
   });
 
-  // 3g. Single Order / Access Verification Lookup (by Order ID, Razorpay Order ID, or Payment ID)
+  // 3g. Single Order / Access Verification Lookup (Protected against IDOR & Data Leaks)
   app.get('/api/orders/:id', async (req, res) => {
     try {
       const orderId = req.params.id;
@@ -617,6 +708,36 @@ async function startServer() {
       const order = await pgDb.getOrderById(orderId);
       if (!order) {
         return res.status(404).json({ error: 'Order not found' });
+      }
+
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+      const session = token ? sessions.get(token) : null;
+
+      const isAdmin = session && session.role === 'admin';
+      const isOwner = session && (
+        (order.user_id && session.userId === order.user_id) ||
+        (order.customer_email && session.email.toLowerCase() === order.customer_email.toLowerCase())
+      );
+      const paymentRefQuery = (req.query.ref || req.query.payment_id || '').toString().trim();
+      const hasPaymentProof = paymentRefQuery && (
+        order.razorpay_payment_id === paymentRefQuery ||
+        order.payment_reference === paymentRefQuery
+      );
+
+      // If requested by an unverified caller without session or payment proof, do not expose access_url or customer phone/email
+      if (!isAdmin && !isOwner && !hasPaymentProof) {
+        const safeOrder = {
+          id: order.id,
+          template_id: order.template_id,
+          template_title: order.template_title,
+          amount: order.amount,
+          currency: order.currency,
+          payment_status: order.payment_status,
+          created_at: order.created_at,
+          customer_name: order.customer_name ? `${order.customer_name.slice(0, 1)}***` : undefined
+        };
+        return res.json({ success: true, order: safeOrder });
       }
 
       if (order.payment_status === 'Paid') {
@@ -636,16 +757,20 @@ async function startServer() {
   });
 
 
-  // 3e. Customer Purchases Lookup (Filtered by user ID or customer email across all devices)
+  // 3e. Customer Purchases Lookup (Protected: requires session or exact Order ID reference)
   app.get(['/api/user/purchases', '/api/user/purchases-lookup', '/api/user/purchases/:userId'], async (req, res) => {
     try {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+      const session = token ? sessions.get(token) : null;
+
       const userId = (req.params.userId || req.query.userId || '').toString().trim();
       const email = (req.query.email || '').toString().trim();
       if (!userId && !email) {
         return res.status(400).json({ error: 'User ID or email is required.' });
       }
 
-      // 1. Direct Reference / Order ID / Payment ID lookup support
+      // Direct Reference / Order ID / Payment ID lookup support (single specific order reference)
       if (email && !email.includes('@')) {
         const directOrder = await pgDb.getOrderById(email);
         if (directOrder && directOrder.payment_status === 'Paid') {
@@ -655,8 +780,17 @@ async function startServer() {
         }
       }
 
-      const orders = await pgDb.getUserOrders(userId, email);
+      const isAuthorized = session && (
+        session.role === 'admin' ||
+        session.userId === userId ||
+        (email && session.email.toLowerCase() === email.toLowerCase())
+      );
 
+      if (!isAuthorized) {
+        return res.status(401).json({ error: 'Unauthorized: Please log in to view your purchases.' });
+      }
+
+      const orders = await pgDb.getUserOrders(userId, email);
       res.json({ success: true, purchases: orders });
     } catch (error) {
       console.error('Error fetching user purchases:', error);
@@ -664,13 +798,22 @@ async function startServer() {
     }
   });
 
-  // 3f. Auto-Prefill Customer Checkout Details from previous orders / database
+  // 3f. Auto-Prefill Customer Checkout Details (Protected against unauthenticated profile enumeration)
   app.get('/api/user/checkout-details', async (req, res) => {
     try {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+      const session = token ? sessions.get(token) : null;
+
       const userId = (req.query.userId || '').toString().trim();
-      const email = (req.query.email || '').toString().trim();
+      const email = (req.query.email || '').toString().trim().toLowerCase();
 
       if (!userId && !email) {
+        return res.json({ success: true, found: false, details: null });
+      }
+
+      // Only allow pre-filling profile if user is authenticated and matches the requested user/email
+      if (!session || (session.userId !== userId && session.email.toLowerCase() !== email)) {
         return res.json({ success: true, found: false, details: null });
       }
 
@@ -685,8 +828,8 @@ async function startServer() {
     }
   });
 
-  // 4. Contact Inquiries -> Stored directly in PostgreSQL
-  app.post('/api/contact', async (req, res) => {
+  // 4. Contact Inquiries -> Stored directly in PostgreSQL (Rate limited against spam flood)
+  app.post('/api/contact', contactLimiter, async (req, res) => {
     try {
       const { name, email, category, orderId, subject, message } = req.body;
 
@@ -732,8 +875,8 @@ async function startServer() {
   // ADMIN AUTHENTICATION & DASHBOARD (POSTGRESQL)
   // ==========================================
 
-  // Admin Login
-  app.post('/api/admin/login', async (req, res) => {
+  // Admin Login (Protected by rate limiter)
+  app.post('/api/admin/login', authLimiter, async (req, res) => {
     try {
       const { email, password } = req.body;
       if (!email || !password) {
@@ -763,10 +906,10 @@ async function startServer() {
     }
   });
 
-  // Admin Sign Up / Set Password
-  app.post(['/api/admin/signup', '/api/admin/set-password'], async (req, res) => {
+  // Admin Sign Up / Set Password (Protected against unauthenticated takeover)
+  app.post(['/api/admin/signup', '/api/admin/set-password'], authLimiter, async (req, res) => {
     try {
-      const { email, password, deleteOldDefault } = req.body;
+      const { email, password, deleteOldDefault, admin_setup_secret } = req.body;
       const cleanEmail = (email || '').trim().toLowerCase();
       const cleanPassword = (password || '').trim();
 
@@ -776,6 +919,24 @@ async function startServer() {
 
       if (cleanPassword.length < 6) {
         return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+      }
+
+      // Security check: If admins already exist, require authenticated admin session OR ADMIN_SETUP_SECRET
+      const hasExistingAdmins = await pgDb.hasAdmins();
+      if (hasExistingAdmins) {
+        const authHeader = req.headers.authorization;
+        const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+        const session = token ? sessions.get(token) : null;
+        const isAuthorizedAdmin = session && session.role === 'admin' && session.expiresAt > Date.now();
+
+        const configuredSecret = process.env.ADMIN_SETUP_SECRET;
+        const isValidSecret = configuredSecret && admin_setup_secret === configuredSecret;
+
+        if (!isAuthorizedAdmin && !isValidSecret) {
+          return res.status(403).json({ 
+            error: 'Forbidden: Admin account already exists. You must be authenticated as an admin or provide the valid ADMIN_SETUP_SECRET to modify admin credentials.' 
+          });
+        }
       }
 
       const admin = await pgDb.setAdminPassword(cleanEmail, cleanPassword);
@@ -792,11 +953,11 @@ async function startServer() {
           id: admin.id,
           email: admin.email
         },
-        message: 'Admin account created successfully'
+        message: 'Admin account credentials updated successfully'
       });
     } catch (error: any) {
       console.error('Admin sign up error:', error);
-      res.status(500).json({ error: error?.message || 'Failed to create admin account' });
+      res.status(500).json({ error: error?.message || 'Failed to update admin account' });
     }
   });
 
@@ -974,7 +1135,12 @@ async function startServer() {
       if (image.startsWith('data:image/')) {
         const matches = image.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
         if (matches) {
-          const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+          const rawExt = matches[1].toLowerCase();
+          const allowed = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
+          if (!allowed.includes(rawExt)) {
+            return res.status(400).json({ error: 'Invalid image format. Only PNG, JPG, WEBP, GIF are allowed.' });
+          }
+          const ext = rawExt === 'jpeg' ? 'jpg' : rawExt;
           const base64Data = matches[2];
           const safeName = (name || `img_${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '_');
           const fileName = `${safeName}-${Date.now().toString().slice(-6)}.${ext}`;
@@ -1010,18 +1176,21 @@ async function startServer() {
     res.type('image/svg+xml').sendFile(path.join(publicPath, 'favicon.svg'));
   });
 
-  // Explicitly handle /uploads static files so missing uploads return 404, NOT Vite index.html
-  app.use('/uploads', (req, res, next) => {
-    const filePath = path.join(publicPath, 'uploads', req.path);
+  // Explicitly handle /uploads static files strictly restricted to uploads directory
+  const uploadsDir = path.resolve(publicPath, 'uploads');
+  app.use('/uploads', (req, res, _next) => {
+    const safeRelPath = path.normalize(req.path).replace(/^(\.\.[\/\\])+/, '');
+    const filePath = path.resolve(uploadsDir, '.' + safeRelPath);
+
+    if (!filePath.startsWith(uploadsDir)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       return res.sendFile(filePath);
     }
     return res.status(404).json({ error: 'Image not found' });
   });
-
-  const distPath = path.join(process.cwd(), 'dist');
-  const hasDist = fs.existsSync(path.join(distPath, 'index.html'));
-  const isProduction = process.env.NODE_ENV === 'production' || hasDist;
 
   if (!isProduction) {
     const vite = await createViteServer({

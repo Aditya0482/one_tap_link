@@ -12,6 +12,7 @@ import {
 import { api } from '../services/api';
 import { ErrorAlert } from './ErrorAlert';
 import { validateName, validateEmail, validateMessage, validateRequired } from '../utils/validators';
+import { trackContact } from '../utils/metaPixel';
 
 interface ContactPageProps {
   onNavigate: (view: any) => void;
@@ -85,6 +86,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
         message: formData.message
       });
 
+      trackContact(formData.category);
       setSubmitted(true);
     } catch (err: any) {
       console.error('Contact submission error:', err);

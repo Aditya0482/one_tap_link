@@ -63,6 +63,11 @@ import {
   Search, 
   ArrowLeft 
 } from 'lucide-react';
+import { 
+  trackPageView, 
+  trackViewContent, 
+  trackInitiateCheckout 
+} from './utils/metaPixel';
 
 type AppView = 'home' | 'templates' | 'product' | 'checkout' | 'thankyou' | 'admin' | 'about' | 'contact' | 'policy' | 'my-purchases';
 
@@ -303,6 +308,18 @@ export const App: React.FC = () => {
     };
   }, [templates]);
 
+  // Meta Pixel: Track PageView on client-side route changes
+  useEffect(() => {
+    trackPageView(currentView);
+  }, [currentView]);
+
+  // Meta Pixel: Track ViewContent when viewing a product
+  useEffect(() => {
+    if (currentView === 'product' && selectedTemplate) {
+      trackViewContent(selectedTemplate);
+    }
+  }, [currentView, selectedTemplate]);
+
   // Navigation Helpers
   const handleNavigate = (view: AppView, payload?: any) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -359,6 +376,7 @@ export const App: React.FC = () => {
   };
 
   const handleBuyNow = (template: Template) => {
+    trackInitiateCheckout(template);
     setSelectedTemplate(template);
     if (!currentUser) {
       setPendingBuyTemplate(template);
