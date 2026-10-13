@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <clipPath id="circle-clip">
+      <circle cx="64" cy="64" r="60" />
+    </clipPath>
+  </defs>
+
+  <!-- Outer Ring Accent -->
+  <circle cx="64" cy="64" r="62" fill="#6D5DFB" />
+  <!-- Crisp White Circle Base -->
+  <circle cx="64" cy="64" r="58" fill="#FFFFFF" />
+
+  <!-- OneTapLink Hand-Tap & Waves Logo -->
+  <g clip-path="url(#circle-clip)">
+    <g transform="translate(64, 64) scale(0.85) translate(-60, -60)">
+      <!-- Outer Ripple Ring -->
+      <path
+        d="M 32 38 A 28 28 0 1 1 88 38"
+        stroke="#0066FF"
+        stroke-width="7"
+        stroke-linecap="round"
+        fill="none"
+      />
+
+      <!-- Inner Ripple Ring -->
+      <path
+        d="M 42 40 A 18 18 0 1 1 78 40"
+        stroke="#0066FF"
+        stroke-width="7"
+        stroke-linecap="round"
+        fill="none"
+      />
+
+      <!-- Center Target Dot / Pulse -->
+      <circle 
+        cx="60" 
+        cy="38" 
+        r="4.5" 
+        fill="#0066FF" 
+      />
+
+      <!-- Precise Hand Tap Contour -->
+      <path
+        d="M 48 96
+           C 38 88 32 80 32 74
+           C 32 70 36 67 40 70
+           C 45 74 49 79 51 79
+           L 51 38
+           C 51 33 55 30 60 30
+           C 65 30 69 33 69 38
+           L 69 58
+           C 69 55 72 53 76 54
+           C 80 55 82 58 82 62
+           C 82 59 85 57 89 58
+           C 93 59 95 63 94 67
+           C 95 65 98 64 101 67
+           C 103 70 102 75 100 80
+           C 97 91 88 103 74 105
+           C 60 107 51 100 48 96 Z"
+        fill="#FFFFFF"
+        stroke="#0A1931"
+        stroke-width="6.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </g>
+  </g>
+</svg>

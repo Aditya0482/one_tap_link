@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  scroll-behavior: smooth;
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 !important;
+  padding: 0 !important;
+  position: relative;
+}
+
+#root {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100vh;
+}
+
+code, kbd, samp, pre, .font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Custom scrollbars for clean UI */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D4D4D8;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #A1A1AA;
+}
+
+/* ==========================================================================
+   OFFICIAL RECEIPT & INVOICE PRINT STYLING
+   Protects against cut-off borders, handles 1 or 2 page layouts gracefully,
+   and ensures crisp typography and margins for PDF export / printing.
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 12mm 12mm 12mm;
+  }
+
+  /* Reset body and root backgrounds for clean paper output */
+  html, body, #root {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide website UI headers, banners, navigation and decorative buttons */
+  header,
+  #main-header,
+  nav,
+  footer,
+  .print-hidden,
+  .no-print,
+  button,
+  .web-nav,
+  #hero-section,
+  #featured-templates-section,
+  #trust-benefits-section {
+    display: none !important;
+  }
+
+  /* Force display of the printable receipt container */
+  .receipt-printable-doc {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border: 1.5px solid #0f172a !important;
+    border-radius: 8px !important;
+    padding: 16mm 14mm !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Critical: Prevent splitting and slicing across page breaks */
+  .receipt-avoid-break,
+  .avoid-page-break,
+  .receipt-section-box,
+  .receipt-item-row,
+  .receipt-header,
+  .receipt-footer-stamp {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Table styling for printed invoice */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    break-inside: auto !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  th, td {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Ensure text contrast on printed paper */
+  * {
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+}

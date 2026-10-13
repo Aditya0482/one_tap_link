@@ -1,0 +1,6 @@
+{
+  "name": "OneTapLink",
+  "description": "Save time with professionally designed Google templates that are simple to customize and ready to use instantly.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
